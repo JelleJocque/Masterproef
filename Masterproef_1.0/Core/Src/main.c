@@ -30,7 +30,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -39,7 +38,6 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -71,12 +69,10 @@ static void MX_SPI2_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
+
 /* USER CODE BEGIN PFP */
 void Potmeter_Init(void);
-void setup(void);
-void Tx_test(void);
-void Rx_test(void);
-void Send_Data(void);
+void Setup(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -184,7 +180,7 @@ int main(void)
   Tx_resolution = 8;
 
   ADF_Init();
-  setup();
+  Setup();
 
   /* USER CODE END 2 */
 
@@ -643,7 +639,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void setup(void)
+void Setup(void)
 {
 	OLED_init();
 	OLED_print_text("Jelle's Walkie", 10, 30);
@@ -747,112 +743,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		circular_buf_put_overwrite(Tx_buffer_handle_t, adcVal);
 		counter++;
 	}
-}
-
-void Send_Data(void)
-{
-//	if (counter%100 == 0)
-//	{
-//		// Write Header byte with the length of the packet (1 + 100 + 2)
-//		uint8_t packet_length = 103;
-//		ADF_SPI_MEM_WR(TX_BUFFER_BASE, packet_length);
-//
-//		// Write 103 bytes of Tx_buffer to ADF7242
-//		for (uint8_t i=1; i<101; i++)
-//		{
-//		  uint8_t sampleByte;
-//		  int8_t result = circular_buf_get(Tx_buffer_handle_t, &sampleByte);
-//		  ADF_SPI_MEM_WR(TX_BUFFER_BASE + i, sampleByte);
-//		}
-//
-//		ADF_Tx_mode();
-
-//		//Read Tx buffer to check
-//		uint8_t byte1 = ADF_SPI_MEM_RD(TX_BUFFER_BASE);
-//		uint8_t byte2 = ADF_SPI_MEM_RD(1);
-//		uint8_t byte250 = ADF_SPI_MEM_RD(249);
-//		uint8_t byte251 = ADF_SPI_MEM_RD(250);
-//
-//		// OLED debug
-//		OLED_clear_screen();
-//		OLED_print_text("Tx buffer values:", 0, 0);
-//		OLED_print_variable("Byte 1:", byte1, 0, 10);
-//		OLED_print_variable("Byte 2:", byte2, 0, 20);
-//		OLED_print_variable("Byte 250:", byte250, 0, 30);
-//		OLED_print_variable("Byte 251:", byte251, 0, 40);
-//		OLED_update();
-//
-//		HAL_Delay(3000);
-//	}
-}
-
-void Tx_test(void)
-{
-	//Clear interrupt flag tx_pkt_sent
-//	ADF_SPI_MEM_WR(0x3cc, 0x10);
-
-	//ADF write to Tx Buffer
-	uint8_t TxBuffer1 = ADF_WR_Tx_Buffer(0, 0x06);
-	uint8_t TxBuffer2 = ADF_WR_Tx_Buffer(1, 0x12);
-	uint8_t TxBuffer3 = ADF_WR_Tx_Buffer(2, 0x34);
-	uint8_t TxBuffer4 = ADF_WR_Tx_Buffer(3, 0x56);
-
-	SSD1306_Fill(SSD1306_COLOR_BLACK);
-
-	OLED_print_text("Transmitting...", 0, 0);
-
-	OLED_print_variable("Tx Buf len:", TxBuffer1, 0, 10);
-
-	uint32_t frequency = ADF_SPI_MEM_RD(0x302);
-	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x301);
-	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x300);
-
-	frequency /= 100;
-	OLED_print_variable("Freq (MHz):", frequency, 0, 20);
-
-	uint8_t status;
-	status = ADF_SPI_SEND_BYTE(0xff);
-	OLED_print_variable("Status before:", status, 0, 30);
-
-	ADF_Tx_TEST();
-
-	status = ADF_SPI_SEND_BYTE(0xff);
-	OLED_print_variable("Status after:", status, 0, 40);
-
-	SSD1306_UpdateScreen();
-
-	HAL_Delay(500);
-}
-
-void Rx_test(void)
-{
-	//Clear interrupt flag rx_pkt_rcvd
-//	ADF_SPI_MEM_WR(0x3cc, 0x08);
-
-	ADF_Rx_TEST();
-
-	SSD1306_Fill(SSD1306_COLOR_BLACK);
-
-	OLED_print_text("Receiving...", 0, 0);
-
-	uint8_t status;
-	status = ADF_SPI_SEND_BYTE(0xff);
-	OLED_print_variable("Status:", status, 0, 10);
-
-	if (ADF7242_Rx_pkt_rcv())
-	{
-		OLED_print_variable("pkt length:", ADF_SPI_MEM_RD(0), 0, 20);
-
-		OLED_print_variable("Nr 1:", ADF_SPI_MEM_RD(1), 0, 30);
-		OLED_print_variable("Nr 2:", ADF_SPI_MEM_RD(2), 64, 30);
-		OLED_print_variable("Nr 3:", ADF_SPI_MEM_RD(3), 0, 40);
-		OLED_print_variable("Nr 4:", (int8_t) ADF_SPI_MEM_RD(4), 64, 40);
-		OLED_print_variable("Nr 5:", ADF_SPI_MEM_RD(5), 0, 50);
-	}
-
-	SSD1306_UpdateScreen();
-
-	HAL_Delay(500);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
