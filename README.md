@@ -5,8 +5,8 @@ Introduction
 ## Hardware
 
 ## Software
-
 ### Version 0.0
+Version 0.0 was a first test for the STM32F4 Discovery-board.
 
 ### Version 1.0
 Version 1.0 implements Rx mode or Tx mode communication but not both.
