@@ -175,7 +175,7 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   /* Settings */
-  settingsMode = 'T';
+  settingsMode = 'R';
 
   settingsDownsampling = 1;								// 0 = No Downsampling to 8k and 1 = Downsampling to 8k
   settingsSampleRate = 16000;							// Sample rate
