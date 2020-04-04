@@ -41,11 +41,11 @@ uint8_t ADF_SPI_MEM_RD(uint16_t);
 void ADF_SPI_RD_Rx_Buffer(void);
 uint8_t ADF_SPI_SEND_BYTE(uint8_t);
 void ADF_SET_FREQ_kHz(uint32_t);
+uint8_t SPI_READY(void);
 
 uint8_t ADF_SET_RC_STATE(uint8_t);
 void ADF_Tx_mode(void);
 void ADF_Rx_mode(void);
-uint8_t SPI_READY(void);
 uint8_t Rx_READY(void);
 uint8_t PHY_RDY_READY(void);
 uint8_t Idle_READY(void);
