@@ -146,7 +146,7 @@ void ADF_SPI_RD_Rx_Buffer(void)
 	{
 		if (Rx_resolution == 8)
 		{
-			HAL_SPI_Receive(&hspi2, &Rx_byte1, 1, 50);
+			HAL_SPI_Receive(&hspi2, &Rx_byte1, 1, 10);
 			circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_byte1);
 			Rx_teller++;
 		}

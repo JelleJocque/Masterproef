@@ -69,7 +69,6 @@ static void MX_SPI2_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
-
 /* USER CODE BEGIN PFP */
 void Potmeter_Init(void);
 void Setup(void);
@@ -97,8 +96,8 @@ uint8_t result;
 uint8_t Tx_byteCounter;
 
 // Tx variables
-uint32_t Tx_teller = 0;
 cbuf_handle_t Tx_buffer_handle_t;
+uint32_t Tx_teller = 0;
 uint8_t TX_BUFFER_BASE;
 uint32_t Tx_Pkt_counter = 0;
 uint8_t Tx_Pkt_data_length;
@@ -112,9 +111,9 @@ uint8_t Tx_resolution;
 uint32_t Tx_test_teller;
 
 // Rx variables
+cbuf_handle_t Rx_buffer_handle_t;
 uint32_t DAC_teller = 0;
 uint32_t Rx_teller = 0;
-cbuf_handle_t Rx_buffer_handle_t;
 uint8_t RX_BUFFER_BASE;
 uint8_t Rx_resolution;
 uint32_t Rx_Pkt_counter = 0;
@@ -175,9 +174,9 @@ int main(void)
 
   settingsDownsampling = 1;								// 0 = No Downsampling to 8k and 1 = Downsampling to 8k
   settingsSampleRate = 16000;							// Sample rate
-  potVolume[0] = 25;									// Audio volume
-  Tx_Pkt_data_length = 120;								// Bij 12-bit resolutie veelvoud van 3!
-  Tx_resolution = 8;
+  potVolume[0] = 24;									// Audio volume
+  Tx_Pkt_data_length = 30;								// Bij 12-bit resolutie veelvoud van 3!
+  Tx_resolution = 8;									// Resolutie: 8 of 12 bit
 
   ADF_Init();
   Setup();
@@ -196,6 +195,8 @@ int main(void)
 			ADF_SPI_RD_Rx_Buffer();
 			ADF_clear_Rx_flag();
 			ADF_set_Rx_mode();
+
+			HAL_TIM_Base_Start_IT(&htim1);									// Start timer 1 (frequency = 8 kHz)
 		}
 	}
     /* USER CODE END WHILE */
@@ -706,8 +707,6 @@ void Setup(void)
 			OLED_print_variable("Status:", status, 0, 20);
 			OLED_update();
 
-			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
-
 			break;
 	}
 }
@@ -788,14 +787,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 						Tx_byte1 = Tx_sample1&0x0ff;
 						ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte1);
 						Tx_teller++;
-					}
-					else if (Tx_byteCounter == 1)
-					{
+
 						result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
 						Tx_byte2 = (Tx_sample1>>4)&0x0f0;
 						Tx_byte2 = Tx_byte2|(Tx_sample2&0x00f);
 						ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte2);
 						Tx_teller++;
+
+						Tx_byteCounter++;
 					}
 					else if (Tx_byteCounter == 2)
 					{
