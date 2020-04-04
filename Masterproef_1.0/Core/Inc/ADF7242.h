@@ -37,13 +37,12 @@ IRQ2      |PA9        |Interrupt request 2
 /* Functions -----------------------------------------------------------------*/
 void ADF_Init(void);
 void ADF_SPI_MEM_WR(uint16_t, uint8_t);
-void ADF_SET_FREQ_kHz();
-
-uint8_t ADF_SET_RC_STATE(uint8_t);
 uint8_t ADF_SPI_MEM_RD(uint16_t);
 void ADF_SPI_RD_Rx_Buffer(void);
 uint8_t ADF_SPI_SEND_BYTE(uint8_t);
-void ADF_SPI_SEND_BYTE_NO_RECEIVE(uint8_t byte);
+void ADF_SET_FREQ_kHz(uint32_t);
+
+uint8_t ADF_SET_RC_STATE(uint8_t);
 void ADF_Tx_mode(void);
 void ADF_Rx_mode(void);
 uint8_t SPI_READY(void);
