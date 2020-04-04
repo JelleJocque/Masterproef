@@ -190,12 +190,12 @@ int main(void)
   {
 	if (settingsMode == 'R')
 	{
-		if (ADF_Rx_flag_set())
+		if (ADF_check_Rx_flag())
 		{
 			Rx_Pkt_counter++;
 			ADF_SPI_RD_Rx_Buffer();
 			ADF_clear_Rx_flag();
-			ADF_Rx_mode();
+			ADF_set_Rx_mode();
 		}
 	}
     /* USER CODE END WHILE */
@@ -668,7 +668,7 @@ void Setup(void)
 			OLED_print_variable("Sample rate:", settingsSampleRate, 0, 10);
 			OLED_print_variable("Cbuf size:", Tx_buffer_size, 0, 20);
 			OLED_print_variable("Tx buf base:", TX_BUFFER_BASE, 0, 30);
-			uint32_t frequency = ADF7242_RD_Frequency_MHz();
+			uint32_t frequency = ADF_RD_Frequency_MHz();
 			OLED_print_variable("Freq (MHz):", frequency, 0, 40);
 			OLED_print_variable("Downsampling:", settingsDownsampling, 0, 50);
 			OLED_update();
@@ -698,7 +698,7 @@ void Setup(void)
 			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
 
 			/* Rx mode */
-			ADF_Rx_mode();																		// Rx mode
+			ADF_set_Rx_mode();																	// Rx mode
 
 			/* OLED debug */
 			uint8_t status;
@@ -754,7 +754,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			Tx_test_teller++;
 			if (Tx_teller == Tx_Pkt_data_length + 2)
 			{
-				ADF_Tx_mode();
+				ADF_set_Tx_mode();
 				Tx_Pkt_counter++;
 				Tx_teller = 0;
 			}

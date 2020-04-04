@@ -41,22 +41,21 @@ uint8_t ADF_SPI_MEM_RD(uint16_t);
 void ADF_SPI_RD_Rx_Buffer(void);
 uint8_t ADF_SPI_SEND_BYTE(uint8_t);
 void ADF_SET_FREQ_kHz(uint32_t);
-uint8_t SPI_READY(void);
-
-uint8_t ADF_SET_RC_STATE(uint8_t);
-void ADF_Tx_mode(void);
-void ADF_Rx_mode(void);
-uint8_t Rx_READY(void);
-uint8_t PHY_RDY_READY(void);
-uint8_t Idle_READY(void);
-void set_IDLE(void);
-void set_PHY_RDY(void);
-uint8_t ADF_WR_Tx_Buffer(uint8_t, uint8_t);
-uint8_t ADF_RD_Tx_Buffer(uint8_t);
+uint32_t ADF_RD_Frequency_MHz(void);
 uint8_t ADF_SPI_STATUS(void);
-uint8_t ADF_Rx_flag_set(void);
+
+uint8_t ADF_SPI_READY(void);
+uint8_t ADF_Rx_READY(void);
+uint8_t ADF_PHY_RDY_READY(void);
+uint8_t ADF_IDLE_READY(void);
+
+void ADF_set_IDLE_mode(void);
+void ADF_set_PHY_RDY_mode(void);
+void ADF_set_Tx_mode(void);
+void ADF_set_Rx_mode(void);
+
+uint8_t ADF_check_Rx_flag(void);
 void ADF_clear_Rx_flag(void);
-uint32_t ADF7242_RD_Frequency_MHz(void);
 
 #ifdef __cplusplus
 }

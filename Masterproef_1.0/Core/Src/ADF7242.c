@@ -79,7 +79,7 @@ void ADF_SPI_MEM_WR(uint16_t reg, uint8_t data)
 	else
 		mode = 1;
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
@@ -92,7 +92,7 @@ void ADF_SPI_MEM_WR(uint16_t reg, uint8_t data)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 }
 
 uint8_t ADF_SPI_MEM_RD(uint16_t reg)
@@ -120,7 +120,7 @@ uint8_t ADF_SPI_MEM_RD(uint16_t reg)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 
 	return value;
 }
@@ -182,7 +182,7 @@ void ADF_SPI_RD_Rx_Buffer(void)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 }
 
 uint8_t ADF_SPI_SEND_BYTE(uint8_t byte)
@@ -191,14 +191,14 @@ uint8_t ADF_SPI_SEND_BYTE(uint8_t byte)
 	bytes[0] = byte;
 	uint8_t status;
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_Transmit(&hspi2, bytes, 1, 50);
 	HAL_SPI_Receive(&hspi2, &status, 1, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
-	while (SPI_READY() == 0);
+	while (ADF_SPI_READY() == 0);
 
 	return status;
 }
@@ -207,13 +207,24 @@ void ADF_SET_FREQ_kHz(uint32_t frequency)
 {
 	uint8_t LSB = frequency&0xff;
 	uint8_t MSB = (frequency>>8)&0xff;
-	uint8_t HSB = (frequency>>8)&0xff;
+	uint8_t HSB = (frequency>>16)&0xff;
 	ADF_SPI_MEM_WR(0x302,HSB);
 	ADF_SPI_MEM_WR(0x301,MSB);
 	ADF_SPI_MEM_WR(0x300,LSB);
 }
 
-uint8_t SPI_READY(void)
+uint32_t ADF_RD_Frequency_MHz(void)
+{
+	uint32_t frequency = ADF_SPI_MEM_RD(0x302);
+	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x301);
+	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x300);
+
+	frequency /= 100;
+
+	return frequency;
+}
+
+uint8_t ADF_SPI_READY(void)
 {
 	uint8_t status;
 
@@ -228,7 +239,7 @@ uint8_t SPI_READY(void)
 		return 0;
 }
 
-uint8_t Rx_READY(void)
+uint8_t ADF_Rx_READY(void)
 {
 	uint8_t status;
 
@@ -243,7 +254,7 @@ uint8_t Rx_READY(void)
 		return 0;
 }
 
-uint8_t PHY_RDY_READY(void)
+uint8_t ADF_PHY_RDY_READY(void)
 {
 	uint8_t status;
 
@@ -258,7 +269,7 @@ uint8_t PHY_RDY_READY(void)
 		return 0;
 }
 
-uint8_t Idle_READY(void)
+uint8_t ADF_IDLE_READY(void)
 {
 	uint8_t status;
 
@@ -273,43 +284,32 @@ uint8_t Idle_READY(void)
 		return 0;
 }
 
-void set_IDLE(void)
+void ADF_set_IDLE_mode(void)
 {
 	uint8_t status;
 	result = ADF_SPI_SEND_BYTE(0xb2);	//Idle mode
 	HAL_Delay(5);
 }
 
-void set_PHY_RDY(void)
+void ADF_set_PHY_RDY_mode(void)
 {
 	uint8_t status;
 	status = ADF_SPI_SEND_BYTE(0xb3);	//PHY_RDY mode
 	HAL_Delay(5);
 }
 
-void ADF_Tx_mode(void)
+void ADF_set_Tx_mode(void)
 {
 	ADF_SPI_SEND_BYTE(0xb5);											//Tx mode
 }
 
-void ADF_Rx_mode(void)
+void ADF_set_Rx_mode(void)
 {
 	result = ADF_SPI_SEND_BYTE(0xb4);									//Rx mode
-	while (Rx_READY() == 0);
+	while (ADF_Rx_READY() == 0);
 }
 
-uint8_t ADF_WR_Tx_Buffer(uint8_t offset, uint8_t data)
-{
-	ADF_SPI_MEM_WR(TX_BUFFER_BASE + offset, data);
-	return ADF_SPI_MEM_RD(TX_BUFFER_BASE + offset);
-}
-
-uint8_t ADF_RD_Tx_Buffer(uint8_t offset)
-{
-	return ADF_SPI_MEM_RD(TX_BUFFER_BASE + offset);
-}
-
-uint8_t ADF_Rx_flag_set(void)
+uint8_t ADF_check_Rx_flag(void)
 {
 	uint8_t status;
 
@@ -327,16 +327,5 @@ uint8_t ADF_Rx_flag_set(void)
 void ADF_clear_Rx_flag(void)
 {
 	ADF_SPI_MEM_WR(0x3cc,0xff);
-	while (ADF_Rx_flag_set() == 1);
-}
-
-uint32_t ADF7242_RD_Frequency_MHz(void)
-{
-	uint32_t frequency = ADF_SPI_MEM_RD(0x302);
-	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x301);
-	frequency = (frequency<<8) | ADF_SPI_MEM_RD(0x300);
-
-	frequency /= 100;
-
-	return frequency;
+	while (ADF_check_Rx_flag() == 1);
 }
