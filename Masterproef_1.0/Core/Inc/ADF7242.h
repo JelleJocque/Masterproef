@@ -52,7 +52,6 @@ uint8_t PHY_RDY_READY(void);
 uint8_t Idle_READY(void);
 void set_IDLE(void);
 void set_PHY_RDY(void);
-uint8_t wait_RC_RDY(void);
 uint8_t ADF_WR_Tx_Buffer(uint8_t, uint8_t);
 uint8_t ADF_RD_Tx_Buffer(uint8_t);
 uint8_t ADF_SPI_STATUS(void);

@@ -80,21 +80,6 @@ uint8_t ADF_SPI_STATUS(void)
 	return status[0];
 }
 
-uint8_t ADF_SET_RC_STATE(uint8_t state)
-{
-	uint8_t status;
-
-	if (state == 0xc8)
-	{
-		status = ADF_SPI_SEND_BYTE(state);
-	}
-	else
-	{
-		while (wait_RC_RDY() == 0);
-		status = ADF_SPI_SEND_BYTE(state);
-	}
-}
-
 void ADF_SPI_MEM_WR(uint16_t reg, uint8_t data)
 {
 	uint8_t SPI_MEM_WR_MODES[3] = {0x08, 0x09, 0x0b};
@@ -332,24 +317,6 @@ void set_PHY_RDY(void)
 	uint8_t status;
 	status = ADF_SPI_SEND_BYTE(0xb3);	//PHY_RDY mode
 	HAL_Delay(5);
-}
-
-uint8_t wait_RC_RDY(void)
-{
-	uint8_t status;
-
-	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
-	HAL_SPI_Receive(&hspi2, &status, 1, 50);
-//	HAL_SPI_TransmitReceive(&hspi2, 0xff, &status, 2, 50);
-	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
-
-	while (SPI_READY() == 0);
-
-	if ((status&0x20) == 0x20)
-		return 1;
-	else
-		return 0;
 }
 
 void ADF_Tx_mode(void)
