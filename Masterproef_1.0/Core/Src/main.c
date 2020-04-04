@@ -195,8 +195,6 @@ int main(void)
 			ADF_SPI_RD_Rx_Buffer();
 			ADF_clear_Rx_flag();
 			ADF_set_Rx_mode();
-
-			HAL_TIM_Base_Start_IT(&htim1);									// Start timer 1 (frequency = 8 kHz)
 		}
 	}
     /* USER CODE END WHILE */
@@ -706,6 +704,8 @@ void Setup(void)
 			status = ADF_SPI_SEND_BYTE(0xff);
 			OLED_print_variable("Status:", status, 0, 20);
 			OLED_update();
+
+			HAL_TIM_Base_Start_IT(&htim1);									// Start timer 1 (frequency = 8 kHz)
 
 			break;
 	}
