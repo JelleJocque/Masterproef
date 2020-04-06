@@ -188,19 +188,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-<<<<<<< HEAD
-	if (settingsMode == 'R')
-	{
-		if (ADF_check_Rx_flag())
-		{
-			Rx_Pkt_counter++;
-			ADF_SPI_RD_Rx_Buffer();
-			ADF_clear_Rx_flag();
-			ADF_set_Rx_mode();
-		}
-	}
-=======
->>>>>>> features/encryption
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
