@@ -192,6 +192,7 @@ int main(void)
   {
 	if (RX_PACKET_RECEIVED)
 	{
+		RX_PACKET_RECEIVED = 0;
 		Rx_Pkt_counter++;
 
 		uint8_t data;
