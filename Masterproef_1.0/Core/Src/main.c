@@ -72,6 +72,7 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 void Potmeter_Init(void);
 void Setup(void);
+void Rx_handler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -187,18 +188,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	if (settingsMode == 'R')
-	{
-		if (ADF_check_Rx_flag())
-		{
-			Rx_Pkt_counter++;
-			ADF_SPI_RD_Rx_Buffer();
-			ADF_clear_Rx_flag();
-			ADF_set_Rx_mode();
-
-			HAL_TIM_Base_Start_IT(&htim1);									// Start timer 1 (frequency = 8 kHz)
-		}
-	}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -637,6 +626,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -718,6 +711,14 @@ void Potmeter_Init(void)
   HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_SET);
 }
 
+void Rx_handler(void)
+{
+	Rx_Pkt_counter++;
+	ADF_SPI_RD_Rx_Buffer();
+	ADF_clear_Rx_flag();
+	ADF_set_Rx_mode();
+}
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	if (settingsDownsampling)
@@ -754,7 +755,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			if (Tx_teller == Tx_Pkt_data_length + 2)
 			{
 				ADF_set_Tx_mode();
-				Tx_Pkt_counter++;
 				Tx_teller = 0;
 			}
 
@@ -831,6 +831,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 /* USER CODE END 4 */
+
+/* Callback external interrupt 8 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == ADF7242_IRQ1_Pin)
+	{
+		Tx_Pkt_counter++;
+	}
+	else if (GPIO_Pin == ADF7242_IRQ2_Pin)
+	{
+		Rx_handler();
+	}
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

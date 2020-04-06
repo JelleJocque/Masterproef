@@ -35,7 +35,7 @@ void ADF_Init(void)
 	result = ADF_SPI_SEND_BYTE(0xc8);				//RESET
 	HAL_Delay(10);
 
-	ADF_SPI_MEM_WR(0x107,0x06);						//auto turnaround (tx to rx and rx to tx)
+//	ADF_SPI_MEM_WR(0x107,0x06);						//auto turnaround (tx to rx and rx to tx)
 
 	ADF_SPI_MEM_WR(0x13e,0x00); 					//rc_mode = IEEE802.15.4 packet
 
