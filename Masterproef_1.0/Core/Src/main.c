@@ -172,9 +172,9 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  /* Settings */
-  settingsMode = 'R';
 
+  /* Settings */
+  settingsMode = 'T';
   settingsDownsampling = 1;								// 0 = No Downsampling to 8k and 1 = Downsampling to 8k
   settingsSampleRate = 16000;							// Sample rate
   potVolume[0] = 24;									// Audio volume
@@ -195,39 +195,7 @@ int main(void)
 		RX_PACKET_RECEIVED = 0;
 		Rx_Pkt_counter++;
 
-		uint8_t data;
-
-		HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-
-		uint8_t bytes[2];
-		bytes[0] = 0x30;
-		bytes[1] = 0xff;
-
-		HAL_SPI_Transmit_IT(&hspi2, bytes, 2);
-
-		HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_length, 1);
-		HAL_SPI_Receive_IT(&hspi2, &Rx_resolution, 1);
-
-		Rx_byteCounter = 0;
-
-		int i = 2;
-		while (i < Rx_Pkt_length-2)
-		{
-			if (Rx_resolution == 8)
-			{
-				HAL_SPI_Receive_IT(&hspi2, &Rx_byte1, 1);
-				circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_byte1);
-				Rx_teller++;
-			}
-			i++;
-		}
-
-		HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
-		HAL_SPI_Receive_IT(&hspi2, &Rx_SQI, 1);
-
-		HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
-
-		while (ADF_SPI_READY() == 0);
+		ADF_SPI_RD_Rx_Buffer();
 
 		ADF_clear_Rx_flag();
 		ADF_set_Rx_mode();
@@ -310,7 +278,11 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
-  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
+
+  if (Tx_resolution == 12)
+	  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  else
+	  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
@@ -366,7 +338,7 @@ static void MX_DAC_Init(void)
   /** DAC channel OUT1 config 
   */
   sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
-  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_DISABLE;
+  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
@@ -671,7 +643,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }

@@ -129,18 +129,16 @@ uint8_t ADF_SPI_MEM_RD(uint16_t reg)
 
 void ADF_SPI_RD_Rx_Buffer(void)
 {
-	uint8_t data;
-
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
 	uint8_t bytes[2];
 	bytes[0] = 0x30;
 	bytes[1] = 0xff;
 
-	HAL_SPI_Transmit(&hspi2, bytes, 2, 50);
+	HAL_SPI_Transmit_IT(&hspi2, bytes, 2);
 
-	HAL_SPI_Receive(&hspi2, &Rx_Pkt_length, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Rx_resolution, 1, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_length, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_resolution, 1);
 
 	Rx_byteCounter = 0;
 
@@ -149,7 +147,7 @@ void ADF_SPI_RD_Rx_Buffer(void)
 	{
 		if (Rx_resolution == 8)
 		{
-			HAL_SPI_Receive(&hspi2, &Rx_byte1, 1, 50);
+			HAL_SPI_Receive_IT(&hspi2, &Rx_byte1, 1);
 			circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_byte1);
 			Rx_teller++;
 		}
@@ -157,12 +155,12 @@ void ADF_SPI_RD_Rx_Buffer(void)
 		{
 			if (Rx_byteCounter == 0)
 			{
-				HAL_SPI_Receive(&hspi2, &Rx_byte1, 1, 50);
+				HAL_SPI_Receive_IT(&hspi2, &Rx_byte1, 1);
 				Rx_sample1 = Rx_byte1&0x0ff;
 			}
 			else if (Rx_byteCounter == 1)
 			{
-				HAL_SPI_Receive(&hspi2, &Rx_byte2, 1, 50);
+				HAL_SPI_Receive_IT(&hspi2, &Rx_byte2, 1);
 				Rx_sample2 = Rx_byte2&0x00f;
 				Rx_sample1 = ((Rx_byte2<<4)&0xf00)|Rx_sample1;
 				circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_sample1);
@@ -170,7 +168,7 @@ void ADF_SPI_RD_Rx_Buffer(void)
 			}
 			else if (Rx_byteCounter == 2)
 			{
-				HAL_SPI_Receive(&hspi2, &Rx_byte3, 1, 50);
+				HAL_SPI_Receive_IT(&hspi2, &Rx_byte3, 1);
 				Rx_sample2 = ((Rx_byte3<<4)&0xff0)|Rx_sample2;
 				circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_sample2);
 				Rx_teller++;
@@ -181,8 +179,8 @@ void ADF_SPI_RD_Rx_Buffer(void)
 		i++;
 	}
 
-	HAL_SPI_Receive(&hspi2, &Rx_RSSI, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Rx_SQI, 1, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_SQI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
