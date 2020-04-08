@@ -298,4 +298,4 @@ VP_TIM5_VS_ClockSourceINT.Signal=TIM5_VS_ClockSourceINT
 VP_TIM5_VS_no_output1.Mode=Output Compare1 No Output
 VP_TIM5_VS_no_output1.Signal=TIM5_VS_no_output1
 board=custom
-isbadioc=true
+isbadioc=false

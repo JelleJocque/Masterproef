@@ -72,6 +72,8 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 void Potmeter_Init(void);
 void Setup(void);
+void Play_Audio(void);
+void Transmit(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -278,11 +280,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
-
-  if (Tx_resolution == 12)
-	  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  else
-	  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
@@ -729,6 +727,87 @@ void Potmeter_Init(void)
   HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_SET);
 }
 
+void Play_Audio(void)
+{
+	uint16_t size = circular_buf_size(Rx_buffer_handle_t);
+	if (size != 0)
+	{
+		if (Rx_resolution == 12)
+		{
+			uint16_t sample;
+			int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
+			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sample);
+		}
+		else if (Rx_resolution == 8)
+		{
+			uint8_t sample;
+			int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
+			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_8B_R, sample);
+		}
+		DAC_teller++;
+	}
+}
+
+void Transmit(void)
+{
+	Tx_test_teller++;
+	if (Tx_teller == Tx_Pkt_data_length + 2)
+	{
+		ADF_set_Tx_mode();
+		Tx_Pkt_counter++;
+		Tx_teller = 0;
+	}
+
+	if (Tx_teller == 0)
+	{
+		//Write Header byte with the length of the packet (1 + 1 + lengte + 2)
+		uint8_t packet_length = Tx_Pkt_data_length + 4;
+		ADF_SPI_MEM_WR(TX_BUFFER_BASE, packet_length);
+		Tx_teller++;
+		ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_resolution);
+		Tx_teller++;
+
+		Tx_byteCounter = 0;
+	}
+
+	uint16_t size = circular_buf_size(Tx_buffer_handle_t);
+	if (size != 0)
+	{
+		if (Tx_resolution == 8)
+		{
+			result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
+			ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_sample1);
+			Tx_teller++;
+		}
+		else if (Tx_resolution == 12)
+		{
+			if (Tx_byteCounter == 0)
+			{
+				result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
+				Tx_byte1 = Tx_sample1&0x0ff;
+				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte1);
+				Tx_teller++;
+
+				result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
+				Tx_byte2 = (Tx_sample1>>4)&0x0f0;
+				Tx_byte2 = Tx_byte2|(Tx_sample2&0x00f);
+				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte2);
+				Tx_teller++;
+
+				Tx_byteCounter++;
+			}
+			else if (Tx_byteCounter == 2)
+			{
+				Tx_byte3 = (Tx_sample2>>4)&0xff;
+				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte3);
+				Tx_teller++;
+				Tx_byteCounter = -1;
+			}
+			Tx_byteCounter++;
+		}
+	}
+}
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	if (settingsDownsampling)
@@ -761,83 +840,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		if (settingsMode == 'T')
 		{
-			Tx_test_teller++;
-			if (Tx_teller == Tx_Pkt_data_length + 2)
-			{
-				ADF_set_Tx_mode();
-				Tx_Pkt_counter++;
-				Tx_teller = 0;
-			}
-
-			if (Tx_teller == 0)
-			{
-				//Write Header byte with the length of the packet (1 + 1 + lengte + 2)
-				uint8_t packet_length = Tx_Pkt_data_length + 4;
-				ADF_SPI_MEM_WR(TX_BUFFER_BASE, packet_length);
-				Tx_teller++;
-				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_resolution);
-				Tx_teller++;
-
-				Tx_byteCounter = 0;
-			}
-
-			uint16_t size = circular_buf_size(Tx_buffer_handle_t);
-			if (size != 0)
-			{
-				if (Tx_resolution == 8)
-				{
-					result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
-					ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_sample1);
-					Tx_teller++;
-				}
-				else if (Tx_resolution == 12)
-				{
-					if (Tx_byteCounter == 0)
-					{
-						result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
-						Tx_byte1 = Tx_sample1&0x0ff;
-						ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte1);
-						Tx_teller++;
-
-						result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
-						Tx_byte2 = (Tx_sample1>>4)&0x0f0;
-						Tx_byte2 = Tx_byte2|(Tx_sample2&0x00f);
-						ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte2);
-						Tx_teller++;
-
-						Tx_byteCounter++;
-					}
-					else if (Tx_byteCounter == 2)
-					{
-						Tx_byte3 = (Tx_sample2>>4)&0xff;
-						ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte3);
-						Tx_teller++;
-						Tx_byteCounter = -1;
-					}
-					Tx_byteCounter++;
-				}
-			}
+			Transmit();
 		}
 		else if (settingsMode == 'R')
 		{
 			test++;
-			uint16_t size = circular_buf_size(Rx_buffer_handle_t);
-			if (size != 0)
-			{
-				if (Rx_resolution == 12)
-				{
-					uint16_t sample;
-					int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
-					HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sample);
-				}
-				else if (Rx_resolution == 8)
-				{
-					uint8_t sample;
-					int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
-					HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_8B_R, sample);
-				}
-				DAC_teller++;
-			}
+			Play_audio();
 		}
 	}
 }
