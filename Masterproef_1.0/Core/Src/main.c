@@ -219,31 +219,6 @@ int main(void)
 				circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_byte1);
 				Rx_teller++;
 			}
-			else if (Rx_resolution == 12)
-			{
-				if (Rx_byteCounter == 0)
-				{
-					HAL_SPI_Receive(&hspi2, &Rx_byte1, 1, 50);
-					Rx_sample1 = Rx_byte1&0x0ff;
-				}
-				else if (Rx_byteCounter == 1)
-				{
-					HAL_SPI_Receive(&hspi2, &Rx_byte2, 1, 50);
-					Rx_sample2 = Rx_byte2&0x00f;
-					Rx_sample1 = ((Rx_byte2<<4)&0xf00)|Rx_sample1;
-					circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_sample1);
-					Rx_teller++;
-				}
-				else if (Rx_byteCounter == 2)
-				{
-					HAL_SPI_Receive(&hspi2, &Rx_byte3, 1, 50);
-					Rx_sample2 = ((Rx_byte3<<4)&0xff0)|Rx_sample2;
-					circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_sample2);
-					Rx_teller++;
-					Rx_byteCounter = -1;
-				}
-				Rx_byteCounter++;
-			}
 			i++;
 		}
 
@@ -391,7 +366,7 @@ static void MX_DAC_Init(void)
   /** DAC channel OUT1 config 
   */
   sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
-  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
+  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_DISABLE;
   if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
@@ -894,6 +869,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 	}
 }
+
+/* Callback external interrupts */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == ADF7242_IRQ1_Pin)
+	{
+		TX_PACKET_SEND = 1;
+	}
+	else if (GPIO_Pin == ADF7242_IRQ2_Pin)
+	{
+		RX_PACKET_RECEIVED = 1;
+	}
+}
+
 /* USER CODE END 4 */
 
 /**
