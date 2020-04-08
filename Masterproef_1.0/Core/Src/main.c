@@ -70,7 +70,7 @@ static void MX_ADC1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-void Potmeter_Init(void);
+void Potmeter_Init(uint8_t);
 void Setup(void);
 void Play_Audio(void);
 void Transmit(void);
@@ -78,18 +78,22 @@ void Transmit(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-char settingsMode;
 
+/* Settings */
+char settingsMode;
 uint8_t settingsDownsampling;
-uint8_t potVolume[1];
 uint16_t settingsSampleRate;
+uint8_t settingsVolume;
+uint8_t settingsPacketLength;
+uint8_t settingsResolution;
+
+/* General variables */
+uint8_t returnValue;
 
 uint8_t spi1TxBuffer;
 uint16_t adcVal;
 uint16_t adcValDownSampled;
 uint32_t counter = 0;
-
-uint8_t returnValue;
 
 uint8_t value;
 
@@ -102,14 +106,12 @@ cbuf_handle_t Tx_buffer_handle_t;
 uint32_t Tx_teller = 0;
 uint8_t TX_BUFFER_BASE;
 uint32_t Tx_Pkt_counter = 0;
-uint8_t Tx_Pkt_data_length;
 uint8_t Tx_byte1;
 uint8_t Tx_byte2;
 uint8_t Tx_byte3;
 uint8_t Tx_byteCounter;
 uint16_t Tx_sample1;
 uint16_t Tx_sample2;
-uint8_t Tx_resolution;
 uint32_t Tx_test_teller;
 
 // Rx variables
@@ -176,12 +178,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'T';
+  settingsMode = 'T';									// Mode, can be Transmit, Reveive or Idle
   settingsDownsampling = 1;								// 0 = No Downsampling to 8k and 1 = Downsampling to 8k
   settingsSampleRate = 16000;							// Sample rate
-  potVolume[0] = 24;									// Audio volume
-  Tx_Pkt_data_length = 30;								// Bij 12-bit resolutie veelvoud van 3!
-  Tx_resolution = 8;									// Resolutie: 8 of 12 bit
+  settingsVolume = 24;									// Audio volume
+  settingsPacketLength = 30;							// Data bytes in packet
+  settingsResolution = 8;								// Resolution: 8 of 12 bit
 
   ADF_Init();
   Setup();
@@ -698,10 +700,10 @@ void Setup(void)
 			Rx_buffer_handle_t = circular_buf_init(Rx_buffer, Rx_buffer_size);					// Rx buffer handle type
 
 			/* OLED debug */
-			OLED_print_variable("POT volume:", potVolume[0], 0, 10);
+			OLED_print_variable("POT volume:", settingsVolume, 0, 10);
 
 			/* HAL Settings for Rx mode */
-			Potmeter_Init();																	// Setting the volume with the potentiometer
+			Potmeter_Init(settingsVolume);														// Setting the volume with the potentiometer
 			HAL_DAC_Start(&hdac, DAC_CHANNEL_1);												// Start the DAC interface
 			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
 
@@ -720,28 +722,30 @@ void Setup(void)
 	}
 }
 
-void Potmeter_Init(void)
+void Potmeter_Init(uint8_t volume)
 {
-  HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_RESET);
-  HAL_SPI_Transmit(&hspi1, potVolume, 1, 50);
-  HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_SET);
+	uint8_t value[1];
+	value[0]= volume;
+	HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_Transmit(&hspi1, value, 1, 50);
+	HAL_GPIO_WritePin(GPIOB, POT_CS_Pin, GPIO_PIN_SET);
 }
 
 void Play_Audio(void)
 {
+	uint16_t sample;
+
 	uint16_t size = circular_buf_size(Rx_buffer_handle_t);
 	if (size != 0)
 	{
 		if (Rx_resolution == 12)
 		{
-			uint16_t sample;
-			int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
+			returnValue = circular_buf_get(Rx_buffer_handle_t, &sample);
 			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sample);
 		}
 		else if (Rx_resolution == 8)
 		{
-			uint8_t sample;
-			int8_t result = circular_buf_get(Rx_buffer_handle_t, &sample);
+			returnValue = circular_buf_get(Rx_buffer_handle_t, &sample);
 			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_8B_R, sample);
 		}
 		DAC_teller++;
@@ -751,7 +755,7 @@ void Play_Audio(void)
 void Transmit(void)
 {
 	Tx_test_teller++;
-	if (Tx_teller == Tx_Pkt_data_length + 2)
+	if (Tx_teller == settingsPacketLength + 2)
 	{
 		ADF_set_Tx_mode();
 		Tx_Pkt_counter++;
@@ -761,10 +765,10 @@ void Transmit(void)
 	if (Tx_teller == 0)
 	{
 		//Write Header byte with the length of the packet (1 + 1 + lengte + 2)
-		uint8_t packet_length = Tx_Pkt_data_length + 4;
+		uint8_t packet_length = settingsPacketLength + 4;
 		ADF_SPI_MEM_WR(TX_BUFFER_BASE, packet_length);
 		Tx_teller++;
-		ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_resolution);
+		ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, settingsResolution);
 		Tx_teller++;
 
 		Tx_byteCounter = 0;
@@ -773,13 +777,13 @@ void Transmit(void)
 	uint16_t size = circular_buf_size(Tx_buffer_handle_t);
 	if (size != 0)
 	{
-		if (Tx_resolution == 8)
+		if (settingsResolution == 8)
 		{
 			result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
 			ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_sample1);
 			Tx_teller++;
 		}
-		else if (Tx_resolution == 12)
+		else if (settingsResolution == 12)
 		{
 			if (Tx_byteCounter == 0)
 			{
@@ -845,7 +849,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		else if (settingsMode == 'R')
 		{
 			test++;
-			Play_audio();
+			Play_Audio();
 		}
 	}
 }

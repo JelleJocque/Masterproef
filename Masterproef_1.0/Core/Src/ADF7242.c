@@ -9,6 +9,8 @@
 extern SPI_HandleTypeDef hspi2;
 extern uint8_t TX_BUFFER_BASE;
 
+extern uint8_t returnValue;
+
 // Rx variables
 extern uint32_t Rx_teller;
 extern cbuf_handle_t Rx_buffer_handle_t;
@@ -28,6 +30,7 @@ extern uint8_t Rx_SQI;
 
 /* Variables -------------------------------------------------------------------*/
 uint8_t result;
+uint8_t dummyByte[] = {0xff};
 
 /* Functions -------------------------------------------------------------------*/
 void ADF_Init(void)
@@ -117,8 +120,8 @@ uint8_t ADF_SPI_MEM_RD(uint16_t reg)
 	bytes[1] = reg&0xff;
 	bytes[2] = 0xff;
 
-	HAL_SPI_Transmit(&hspi2, bytes, 3, 10);
-	HAL_SPI_TransmitReceive(&hspi2, 0xff, &value, 2, 10);
+	HAL_SPI_Transmit_IT(&hspi2, bytes, 3);
+	HAL_SPI_Receive_IT(&hspi2, &value, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -231,8 +234,8 @@ uint8_t ADF_SPI_READY(void)
 	uint8_t status;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
-	HAL_SPI_Receive(&hspi2, &status, 1, 50);
+	HAL_SPI_Transmit_IT(&hspi2, dummyByte, 1);
+	HAL_SPI_Receive_IT(&hspi2, &status, 1);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	if ((status&0x80) == 0x80)
@@ -246,8 +249,8 @@ uint8_t ADF_Rx_READY(void)
 	uint8_t status;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
-	HAL_SPI_Receive(&hspi2, &status, 1, 50);
+	HAL_SPI_Transmit_IT(&hspi2, dummyByte, 1);
+	HAL_SPI_Receive_IT(&hspi2, &status, 1);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	if ((status&0xA4) == 0xA4)
@@ -261,8 +264,8 @@ uint8_t ADF_PHY_RDY_READY(void)
 	uint8_t status;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
-	HAL_SPI_Receive(&hspi2, &status, 1, 50);
+	HAL_SPI_Transmit_IT(&hspi2, dummyByte, 1);
+	HAL_SPI_Receive_IT(&hspi2, &status, 1);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	if ((status&0xA3) == 0xA3)
@@ -276,7 +279,7 @@ uint8_t ADF_IDLE_READY(void)
 	uint8_t status;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
+	HAL_SPI_Transmit(&hspi2, dummyByte, 1, 50);
 	HAL_SPI_Receive(&hspi2, &status, 1, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -288,26 +291,24 @@ uint8_t ADF_IDLE_READY(void)
 
 void ADF_set_IDLE_mode(void)
 {
-	uint8_t status;
-	result = ADF_SPI_SEND_BYTE(0xb2);	//Idle mode
-	HAL_Delay(5);
+	returnValue = ADF_SPI_SEND_BYTE(0xb2);									//Idle mode
+	while (ADF_IDLE_READY() == 0);
 }
 
 void ADF_set_PHY_RDY_mode(void)
 {
-	uint8_t status;
-	status = ADF_SPI_SEND_BYTE(0xb3);	//PHY_RDY mode
-	HAL_Delay(5);
+	returnValue = ADF_SPI_SEND_BYTE(0xb3);									//PHY_RDY mode
+	while (ADF_PHY_RDY_READY() == 0);
 }
 
 void ADF_set_Tx_mode(void)
 {
-	ADF_SPI_SEND_BYTE(0xb5);											//Tx mode
+	returnValue = ADF_SPI_SEND_BYTE(0xb5);									//Tx mode
 }
 
 void ADF_set_Rx_mode(void)
 {
-	result = ADF_SPI_SEND_BYTE(0xb4);									//Rx mode
+	returnValue = ADF_SPI_SEND_BYTE(0xb4);									//Rx mode
 	while (ADF_Rx_READY() == 0);
 }
 
@@ -316,8 +317,8 @@ uint8_t ADF_check_Rx_flag(void)
 	uint8_t status;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(&hspi2, 0xff, 1, 50);
-	HAL_SPI_Receive(&hspi2, &status, 1, 50);
+	HAL_SPI_Transmit_IT(&hspi2, dummyByte, 1);
+	HAL_SPI_Receive_IT(&hspi2, &status, 1);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	if((status&0x40) == 0x40)
@@ -330,9 +331,4 @@ void ADF_clear_Rx_flag(void)
 {
 	ADF_SPI_MEM_WR(0x3cc,0xff);
 	while (ADF_check_Rx_flag() == 1);
-}
-
-void ADF_auto_turnaround(void)
-{
-
 }

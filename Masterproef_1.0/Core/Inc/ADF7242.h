@@ -57,7 +57,6 @@ void ADF_set_Rx_mode(void);
 uint8_t ADF_check_Rx_flag(void);
 void ADF_clear_Rx_flag(void);
 
-
 #ifdef __cplusplus
 }
 #endif
