@@ -74,6 +74,8 @@ void Potmeter_Init(uint8_t);
 void Setup(void);
 void Play_Audio(void);
 void Transmit(void);
+void Receive(void);
+void ResponseToTXBuffer(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,21 +87,15 @@ uint8_t settingsDownsampling;
 uint16_t settingsSampleRate;
 uint8_t settingsVolume;
 uint8_t settingsPacketLength;
-uint8_t settingsResolution;
+uint8_t settingsResolution;					// 8 or 12
+uint8_t settingsEncryption;					// 0 = Encryption off, 1 = Encryption on
+uint32_t settingsFrequency;					// Frequency in kHz
 
 /* General variables */
 uint8_t returnValue;
-
-uint8_t spi1TxBuffer;
 uint16_t adcVal;
 uint16_t adcValDownSampled;
 uint32_t counter = 0;
-
-uint8_t value;
-
-uint8_t result;
-
-uint8_t Tx_byteCounter;
 
 // Tx variables
 cbuf_handle_t Tx_buffer_handle_t;
@@ -132,6 +128,11 @@ uint8_t Rx_RSSI;
 uint8_t Rx_SQI;
 uint8_t Rx_play;
 uint32_t test;
+
+uint8_t Response_Pkt_length;
+uint8_t Response_Packet_Type;
+uint8_t Response_RSSI;
+uint8_t Response_SQI;
 
 uint8_t RX_PACKET_RECEIVED = 0;
 uint8_t TX_PACKET_SEND = 0;
@@ -178,14 +179,16 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'T';									// Mode, can be Transmit, Reveive or Idle
-  settingsDownsampling = 1;								// 0 = No Downsampling to 8k and 1 = Downsampling to 8k
-  settingsSampleRate = 16000;							// Sample rate
-  settingsVolume = 24;									// Audio volume
-  settingsPacketLength = 30;							// Data bytes in packet
-  settingsResolution = 8;								// Resolution: 8 of 12 bit
+  settingsMode = 'R';
+  settingsDownsampling = 1;
+  settingsSampleRate = 16000;
+  settingsVolume = 24;
+  settingsPacketLength = 30;
+  settingsResolution = 8;
+  settingsEncryption = 0;
+  settingsFrequency = 247000;
 
-  ADF_Init();
+  ADF_Init(settingsFrequency);
   Setup();
 
   /* USER CODE END 2 */
@@ -194,15 +197,22 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	if (RX_PACKET_RECEIVED)
+	if (settingsMode == 'R')
 	{
-		RX_PACKET_RECEIVED = 0;
-		Rx_Pkt_counter++;
-
-		ADF_SPI_RD_Rx_Buffer();
-
-		ADF_clear_Rx_flag();
-		ADF_set_Rx_mode();
+		if (RX_PACKET_RECEIVED)
+		{
+			RX_PACKET_RECEIVED = 0;
+			Rx_Pkt_counter++;
+			Receive();
+		}
+	}
+	else if (settingsMode == 'T')
+	{
+		if (RX_PACKET_RECEIVED)
+		{
+			RX_PACKET_RECEIVED = 0;
+			ADF_SPI_RD_Response();
+		}
 	}
     /* USER CODE END WHILE */
 
@@ -689,6 +699,13 @@ void Setup(void)
 			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
 			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386 to prevent power consumption
 
+			if (settingsEncryption)
+			{
+				ADF_set_IDLE_mode();
+				ADF_SPI_MEM_WR(0x107,0x08);														// Auto turnaround tx to rx
+				ADF_set_PHY_RDY_mode();
+			}
+
 			break;
 
 		case 'R':
@@ -707,6 +724,13 @@ void Setup(void)
 			HAL_DAC_Start(&hdac, DAC_CHANNEL_1);												// Start the DAC interface
 			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
 
+			if (settingsEncryption)
+			{
+				ADF_set_PHY_RDY_mode();
+				ResponseToTXBuffer();
+				ADF_set_PHY_RDY_mode();
+			}
+
 			/* Rx mode */
 			ADF_set_Rx_mode();																	// Rx mode
 
@@ -716,7 +740,14 @@ void Setup(void)
 			OLED_print_variable("Status:", status, 0, 20);
 			OLED_update();
 
-			HAL_TIM_Base_Start_IT(&htim1);									// Start timer 1 (frequency = 8 kHz)
+			if (settingsEncryption)
+			{
+				ADF_set_IDLE_mode();
+				ADF_SPI_MEM_WR(0x107,0x04);														// Auto turnaround rx to tx
+				ADF_set_PHY_RDY_mode();
+			}
+
+			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
 
 			break;
 	}
@@ -779,7 +810,7 @@ void Transmit(void)
 	{
 		if (settingsResolution == 8)
 		{
-			result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
+			returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
 			ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_sample1);
 			Tx_teller++;
 		}
@@ -787,12 +818,12 @@ void Transmit(void)
 		{
 			if (Tx_byteCounter == 0)
 			{
-				result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
+				returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
 				Tx_byte1 = Tx_sample1&0x0ff;
 				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte1);
 				Tx_teller++;
 
-				result = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
+				returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
 				Tx_byte2 = (Tx_sample1>>4)&0x0f0;
 				Tx_byte2 = Tx_byte2|(Tx_sample2&0x00f);
 				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte2);
@@ -810,6 +841,24 @@ void Transmit(void)
 			Tx_byteCounter++;
 		}
 	}
+}
+
+void Receive(void)
+{
+	ADF_SPI_RD_Rx_Buffer();
+
+	ADF_clear_Rx_flag();
+
+	if (settingsEncryption)
+		ResponseToTXBuffer();
+
+	ADF_set_Rx_mode();
+}
+
+void ResponseToTXBuffer(void)
+{
+	ADF_SPI_MEM_WR(TX_BUFFER_BASE, 4);					// Response Packet length
+	ADF_SPI_MEM_WR(TX_BUFFER_BASE + 1, 1);				// Response Packet type
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
