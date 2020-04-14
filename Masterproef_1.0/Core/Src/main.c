@@ -86,8 +86,7 @@ void ReadPacket(void);
 
 /* Encryption functions */
 void WriteKeyPacket(void);
-void MasterKeyPacket(void);
-void MasterReadKeyPacket(void);
+void ReadKeyPacket(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -154,7 +153,7 @@ uint8_t Dummy;
 
 uint8_t status;
 
-uint32_t keyPacketCounter;
+uint32_t KeyPacketCounter;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -173,8 +172,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	if (htim->Instance == TIM9)
 	{
-		keyPacketCounter++;
-		MasterKeyPacket();
+		KeyPacketCounter++;
+
+		WriteKeyPacket();
+		ADF_set_Tx_mode();
 	}
 }
 
@@ -257,9 +258,11 @@ int main(void)
 
 		if (settingsMode == 'T')
 		{
-			MasterReadKeyPacket();
+			KeyPacketCounter++;
 
-			HAL_Delay(1000);
+			ReadKeyPacket();
+
+			HAL_Delay(10);
 
 			WriteKeyPacket();
 			ADF_set_Tx_mode();
@@ -274,6 +277,7 @@ int main(void)
 		if (settingsMode == 'R')
 		{
 			ReadPacket();
+			WriteKeyPacket();
 
 			ADF_set_Rx_mode();
 		}
@@ -980,7 +984,7 @@ void ReadPacket(void)
 	while (ADF_SPI_READY() == 0);
 }
 
-void MasterReadKeyPacket(void)
+void ReadKeyPacket(void)
 {
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
@@ -993,8 +997,11 @@ void MasterReadKeyPacket(void)
 	HAL_SPI_Receive(&hspi2, &Rx_Pkt_length, 1, 50);
 	HAL_SPI_Receive(&hspi2, &Rx_Pkt_type, 1, 50);
 	HAL_SPI_Receive(&hspi2, &Dummy, 1, 50);
+	uint8_t extra;
+	HAL_SPI_Receive(&hspi2, &extra, 1, 50);
 	HAL_SPI_Receive(&hspi2, &Rx_RSSI, 1, 50);
 	HAL_SPI_Receive(&hspi2, &Rx_SQI, 1, 50);
+	HAL_SPI_Receive(&hspi2, &status, 1, 50);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1006,12 +1013,6 @@ void WriteKeyPacket(void)
 	ADF_SPI_MEM_WR(TX_BUFFER_BASE, 5);					// Packet length
 	ADF_SPI_MEM_WR(TX_BUFFER_BASE + 1, 1);				// Packet type; 1=key packet
 	ADF_SPI_MEM_WR(TX_BUFFER_BASE + 2, 15);
-}
-
-void MasterKeyPacket(void)
-{
-	WriteKeyPacket();
-	ADF_set_Tx_mode();
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
