@@ -64,7 +64,7 @@ void ADF_Init(uint32_t frequency)
 	//POWER
 //	ADF_SPI_MEM_WR(0x36e,0x7f);								//PA bias[6:1] default=55, max=63
 //	ADF_SPI_MEM_WR(0x3a8,0x15);								//PA cfg[4:0] default=13, max=21
-	ADF_SPI_MEM_WR(0x3aa, 0xf0);							//PA pwr[7:4] min=3, max=15 & [3]=0 & [2:0]=1
+	ADF_SPI_MEM_WR(0x3aa, 0xf1);							//PA pwr[7:4] min=3, max=15 & [3]=0 & [2:0]=1
 
 	ADF_set_PHY_RDY_mode();
 }

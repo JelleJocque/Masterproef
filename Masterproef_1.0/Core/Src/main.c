@@ -301,14 +301,14 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'I';
+  settingsMode = 'R';
   settingsDownsampling = 1;
   settingsSampleRate = 16000;
   settingsVolume = 24;
   settingsPacketLength = 30;
   settingsResolution = 8;
   settingsEncryption = 1;
-  settingsFrequency = 247000;
+  settingsFrequency = 245000;
 
   OLED_init();
   OLED_print_text("Jelle's Walkie", 10, 30);
@@ -1102,7 +1102,7 @@ void ReadKeyPacket(void)
 	if (Key_RSSI_Mean == 0)
 		Key_RSSI_Mean = Key_RSSI;
 
-	if (Key_RSSI_Counter < 100)
+	if (Key_RSSI_Counter < 200)
 	{
 		Key_RSSI_Mean += Key_RSSI;
 		Key_RSSI_Mean /= 2;
