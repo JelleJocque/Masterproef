@@ -140,6 +140,9 @@ uint8_t Key_RSSI_Threshold = 10;
 cbuf_handle_t Key_RSSI_buffer_handle_t;
 cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
 
+uint32_t Key_RSSI_Counter;
+uint16_t Key_RSSI_Mean;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -184,6 +187,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		case ADF7242_IRQ1_Pin:
 			INT_PACKET_SEND = 1;
 			ADF_clear_Tx_flag();
+			if (settingsMode = 'R')
+			{
+				KeyPacketCounter++;
+				ReadKeyPacket();
+				WriteKeyPacket();
+				ADF_set_Rx_mode();
+			}
 
 			break;
 
@@ -300,8 +310,6 @@ int main(void)
   settingsEncryption = 1;
   settingsFrequency = 247000;
 
-  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-
   OLED_init();
   OLED_print_text("Jelle's Walkie", 10, 30);
   OLED_update();
@@ -324,19 +332,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (settingsMode == 'R')
-    {
-    	// Packet Send Interrupt
-		if (INT_PACKET_SEND)
-		{
-			INT_PACKET_SEND = 0;
-
-			ReadKeyPacket();
-			WriteKeyPacket();
-			ADF_set_Rx_mode();
-		}
-    }
-
 //	if (settingsMode == 'R')
 //	{
 //		if (INT_PACKET_RECEIVED)
@@ -918,7 +913,6 @@ void Setup(char mode)
 {
 	OLED_clear_screen();
 	OLED_print_date_and_time();
-	OLED_update();
 
 	switch(mode)
 	{
@@ -1101,9 +1095,24 @@ void ReadKeyPacket(void)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
+	Key_RSSI_Counter++;
+
 	while (ADF_SPI_READY() == 0);
 
-//	circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, Key_RSSI);
+	if (Key_RSSI_Mean == 0)
+		Key_RSSI_Mean = Key_RSSI;
+
+	if (Key_RSSI_Counter < 100)
+	{
+		Key_RSSI_Mean += Key_RSSI;
+		Key_RSSI_Mean /= 2;
+	}
+	else
+	{
+		OLED_clear_screen();
+		OLED_print_variable("Mean RSSI:", Key_RSSI_Mean, 0, 16);
+		OLED_update();
+	}
 }
 
 void WriteKeyPacket(void)
@@ -1131,12 +1140,6 @@ void KeyInit(void)
 	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
 
 	HAL_TIM_Base_Start_IT(&htim9);
-
-//	// OLED DEBUG
-//	OLED_clear_screen();
-//	OLED_print_variable("Total RSSI", circular_buf_size(Key_RSSI_buffer_handle_t), 0, 30);
-//	OLED_print_variable("Good RSSI", circular_buf_size(Key_RSSI_buffer_handle_t), 0, 40);
-//	OLED_update();
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
