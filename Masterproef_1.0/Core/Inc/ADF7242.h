@@ -35,7 +35,7 @@ IRQ2      |PA9        |Interrupt request 2
 /* Defines -------------------------------------------------------------------*/
 
 /* Functions -----------------------------------------------------------------*/
-void ADF_Init(uint32_t, char);
+void ADF_Init(uint32_t);
 void ADF_SPI_MEM_WR(uint16_t, uint8_t);
 uint8_t ADF_SPI_MEM_RD(uint16_t);
 void ADF_SPI_RD_Rx_Buffer(void);
@@ -58,6 +58,9 @@ void ADF_set_Rx_mode(void);
 uint8_t ADF_check_INT_flag(void);
 void ADF_clear_Rx_flag(void);
 void ADF_clear_Tx_flag(void);
+
+void ADF_set_turnaround_Tx_Rx(void);
+void ADF_set_turnaround_Rx_Tx(void);
 
 #ifdef __cplusplus
 }

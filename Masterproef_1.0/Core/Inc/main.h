@@ -58,22 +58,22 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define BUTTON4_Pin GPIO_PIN_1
-#define BUTTON4_GPIO_Port GPIOA
+#define BUTTON_TALK_Pin GPIO_PIN_1
+#define BUTTON_TALK_GPIO_Port GPIOA
+#define BUTTON_TALK_EXTI_IRQn EXTI1_IRQn
 #define BUTTON3_Pin GPIO_PIN_3
 #define BUTTON3_GPIO_Port GPIOA
 #define BUTTON2_Pin GPIO_PIN_4
 #define BUTTON2_GPIO_Port GPIOA
-#define BUTTON_1_Pin GPIO_PIN_6
-#define BUTTON_1_GPIO_Port GPIOA
 #define POT_MOSI_Pin GPIO_PIN_7
 #define POT_MOSI_GPIO_Port GPIOA
 #define DMIC_CK_Pin GPIO_PIN_0
 #define DMIC_CK_GPIO_Port GPIOB
 #define DMIC_WS_Pin GPIO_PIN_1
 #define DMIC_WS_GPIO_Port GPIOB
-#define BUTTON5_Pin GPIO_PIN_2
-#define BUTTON5_GPIO_Port GPIOB
+#define BUTTON_PWR_Pin GPIO_PIN_2
+#define BUTTON_PWR_GPIO_Port GPIOB
+#define BUTTON_PWR_EXTI_IRQn EXTI2_IRQn
 #define ADF7242_SCK_Pin GPIO_PIN_10
 #define ADF7242_SCK_GPIO_Port GPIOB
 #define ADF7242_CS_Pin GPIO_PIN_12

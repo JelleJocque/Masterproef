@@ -35,19 +35,12 @@ extern uint8_t Response_SQI;
 uint8_t result;
 
 /* Functions -------------------------------------------------------------------*/
-void ADF_Init(uint32_t frequency, char mode)
+void ADF_Init(uint32_t frequency)
 {
-	result = ADF_SPI_SEND_BYTE(0xc8);						//RESET
+	returnValue = ADF_SPI_SEND_BYTE(0xc8);					//RESET
 	HAL_Delay(10);
 
 	ADF_SPI_MEM_WR(0x13e,0x00); 							//rc_mode = IEEE802.15.4 packet
-
-	if (mode == 'T')
-		ADF_SPI_MEM_WR(0x107,0x08);							// Set auto turnaround tx-rx
-	else if (mode == 'R')
-		ADF_SPI_MEM_WR(0x107,0x04);							// Set auto turnaround rx-tx
-
-	result = ADF_SPI_MEM_RD(0x107);
 
 	ADF_SPI_MEM_WR(0x3c7,0x00); 							//other interrupt 1 sources off
 	ADF_SPI_MEM_WR(0x3c8,0x10); 							//generate interrupt 1: Packet transmission complete
@@ -354,11 +347,19 @@ uint8_t ADF_check_INT_flag(void)
 void ADF_clear_Rx_flag(void)
 {
 	ADF_SPI_MEM_WR(0x3cc,0x08);
-	while (ADF_check_INT_flag() == 1);
 }
 
 void ADF_clear_Tx_flag(void)
 {
 	ADF_SPI_MEM_WR(0x3cc,0x10);
-	while (ADF_check_INT_flag() == 1);
+}
+
+void ADF_set_turnaround_Tx_Rx(void)
+{
+	ADF_SPI_MEM_WR(0x107,0x08);							// Set auto turnaround tx-rx
+}
+
+void ADF_set_turnaround_Rx_Tx(void)
+{
+	ADF_SPI_MEM_WR(0x107,0x04);							// Set auto turnaround rx-tx
 }
