@@ -6,6 +6,10 @@
  */
 #include "OLED.h"
 
+extern RTC_HandleTypeDef hrtc;
+extern RTC_TimeTypeDef sTime;
+extern RTC_DateTypeDef sDate;
+
 /* Variables -------------------------------------------------------------------*/
 
 /* Functions -------------------------------------------------------------------*/
@@ -24,6 +28,49 @@ void OLED_print_title(char command[], uint8_t x, uint8_t y)
 {
 	SSD1306_GotoXY(x,y);
 	SSD1306_Puts(command, &Font_11x18, SSD1306_COLOR_WHITE);
+}
+
+void OLED_print_date_and_time(void)
+{
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+
+	uint8_t hours = sTime.Hours;
+	uint8_t minutes = sTime.Minutes;
+	uint8_t seconds = sTime.Seconds;
+
+	char stringHours[10];
+	char stringMinutes[10];
+	char stringSeconds[10];
+
+	sprintf(stringHours, "%d", hours);
+	sprintf(stringMinutes, "%d", minutes);
+	sprintf(stringSeconds, "%d", seconds);
+
+	SSD1306_GotoXY(92,0);
+
+	if (hours < 10)
+	{
+		SSD1306_Puts("0", &Font_7x10, SSD1306_COLOR_WHITE);
+		SSD1306_GotoXY(99,0);
+		SSD1306_Puts(stringHours, &Font_7x10, SSD1306_COLOR_WHITE);
+	}
+	else
+		SSD1306_Puts(stringHours, &Font_7x10, SSD1306_COLOR_WHITE);
+
+	SSD1306_GotoXY(106,0);
+	SSD1306_Puts(":", &Font_7x10, SSD1306_COLOR_WHITE);
+
+	SSD1306_GotoXY(113,0);
+
+	if (minutes < 10)
+	{
+		SSD1306_Puts("0", &Font_7x10, SSD1306_COLOR_WHITE);
+		SSD1306_GotoXY(120,0);
+		SSD1306_Puts(stringMinutes, &Font_7x10, SSD1306_COLOR_WHITE);
+	}
+	else
+		SSD1306_Puts(stringMinutes, &Font_7x10, SSD1306_COLOR_WHITE);
+
 }
 
 void OLED_print_variable(char command[], uint32_t value, uint8_t x, uint8_t y)

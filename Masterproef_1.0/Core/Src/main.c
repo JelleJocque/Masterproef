@@ -49,6 +49,8 @@ I2C_HandleTypeDef hi2c1;
 
 I2S_HandleTypeDef hi2s5;
 
+RTC_HandleTypeDef hrtc;
+
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 
@@ -57,6 +59,9 @@ TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim9;
 
 /* USER CODE BEGIN PV */
+
+RTC_TimeTypeDef sTime;
+RTC_DateTypeDef sDate;
 
 /* Settings */
 char settingsMode;
@@ -149,6 +154,7 @@ static void MX_ADC1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM9_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 
 void HAL_GPIO_EXTI_Callback(uint16_t);
@@ -281,6 +287,7 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM1_Init();
   MX_TIM9_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
   /* Settings */
@@ -370,8 +377,9 @@ void SystemClock_Config(void)
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
   /** Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 13;
@@ -396,7 +404,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_I2S;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_I2S|RCC_PERIPHCLK_RTC;
+  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInitStruct.I2SClockSelection = RCC_I2SAPBCLKSOURCE_PLLR;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
@@ -557,6 +566,65 @@ static void MX_I2S5_Init(void)
   /* USER CODE BEGIN I2S5_Init 2 */
 
   /* USER CODE END I2S5_Init 2 */
+
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only 
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+    
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date 
+  */
+  sTime.Hours = 14;
+  sTime.Minutes = 05;
+  sTime.Seconds = 0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_SATURDAY;
+  sDate.Month = RTC_MONTH_APRIL;
+  sDate.Date = 18;
+  sDate.Year = 2020;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
 
 }
 
@@ -849,6 +917,8 @@ static void MX_GPIO_Init(void)
 void Setup(char mode)
 {
 	OLED_clear_screen();
+	OLED_print_date_and_time();
+	OLED_update();
 
 	switch(mode)
 	{
