@@ -212,7 +212,7 @@ uint8_t SSD1306_Init(void) {
 	/* Init LCD same as Arduino code*/
 	SSD1306_WRITECOMMAND(0xAE); //display off
 	SSD1306_WRITECOMMAND(0xD5); //--set display clock divide ratio/oscillator frequency
-	SSD1306_WRITECOMMAND(0x80); //--set divide ratio
+	SSD1306_WRITECOMMAND(0xF0); //--set divide ratio (Standard 0x80)
 	SSD1306_WRITECOMMAND(0xA8); //--set multiplex ratio(1 to 64)
 	SSD1306_WRITECOMMAND(0x3F);
 
@@ -708,4 +708,5 @@ void ssd1306_I2C_Write(uint8_t address, uint8_t reg, uint8_t data) {
 	dt[0] = reg;
 	dt[1] = data;
 	HAL_I2C_Master_Transmit(&hi2c1, address, dt, 2, 10);
+//	HAL_I2C_Master_Transmit_IT(&hi2c1, address, dt, 2);
 }

@@ -142,6 +142,10 @@ cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
 
 uint32_t Key_RSSI_Counter;
 uint16_t Key_RSSI_Mean;
+uint16_t Key_Bit_Counter;
+
+uint32_t Packets_Received;
+uint32_t Packets_Send;
 
 /* USER CODE END PV */
 
@@ -162,8 +166,10 @@ static void MX_RTC_Init(void);
 
 void HAL_GPIO_EXTI_Callback(uint16_t);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *);
 
 /* Basic functions */
+void Startup(void);
 void Potmeter_Init(uint8_t);
 void Setup(char);
 void Play_Audio(void);
@@ -173,7 +179,7 @@ void Receive(void);
 /* Encryption functions */
 void WriteKeyPacket(void);
 void ReadKeyPacket(void);
-void KeyInit(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -187,7 +193,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		case ADF7242_IRQ1_Pin:
 			INT_PACKET_SEND = 1;
 			ADF_clear_Tx_flag();
-			if (settingsMode = 'R')
+			Packets_Send++;
+
+			if (settingsMode == 'R')
 			{
 				KeyPacketCounter++;
 				ReadKeyPacket();
@@ -200,10 +208,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		case ADF7242_IRQ2_Pin:
 			INT_PACKET_RECEIVED = 1;
 			ADF_clear_Rx_flag();
-			if (settingsMode = 'T')
+			Packets_Received++;
+
+			if (settingsMode == 'T')
 			{
 				KeyPacketCounter++;
-				ReadKeyPacket();
+				ReadKeyPacket();				// TAKING TOO LONG!!!
 			}
 
 			break;
@@ -215,7 +225,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			if (settingsEncryption)
 			{
 				ADF_set_turnaround_Tx_Rx();
-				KeyInit();
+				HAL_TIM_Base_Start_IT(&htim9);
 			}
 
 			break;
@@ -233,7 +243,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 }
 
-/* Timer events */
+/* Callback timers */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if (htim->Instance == TIM1)
@@ -254,6 +264,33 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		Timer9Counter++;
 		WriteKeyPacket();
 		ADF_set_Tx_mode();
+	}
+}
+
+/* Callback ADC */
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	if (settingsDownsampling)
+	{
+		if (counter%2)
+		{
+			adcVal = HAL_ADC_GetValue(&hadc1);
+			counter++;
+		}
+		else
+		{
+			adcValDownSampled = HAL_ADC_GetValue(&hadc1);
+			adcValDownSampled += adcVal;
+			adcValDownSampled /= 2;
+			circular_buf_put_overwrite(Tx_buffer_handle_t, adcValDownSampled);
+			counter++;
+		}
+	}
+	else
+	{
+		adcVal = HAL_ADC_GetValue(&hadc1);
+		circular_buf_put_overwrite(Tx_buffer_handle_t, adcVal);
+		counter++;
 	}
 }
 
@@ -301,7 +338,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'R';
+  settingsMode = 'I';
   settingsDownsampling = 1;
   settingsSampleRate = 16000;
   settingsVolume = 24;
@@ -310,21 +347,7 @@ int main(void)
   settingsEncryption = 1;
   settingsFrequency = 245000;
 
-  OLED_init();
-  OLED_print_text("Jelle's Walkie", 10, 30);
-  OLED_update();
-
-  HAL_Delay(2000);
-
-  ADF_Init(settingsFrequency);
-  Setup(settingsMode);
-
-  if (settingsMode == 'R')
-  {
-	  ADF_set_turnaround_Rx_Tx();
-
-	  WriteKeyPacket();
-  }
+  Startup();
 
   /* USER CODE END 2 */
 
@@ -332,6 +355,64 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	    uint16_t size = circular_buf_size(Key_RSSI_buffer_handle_t);
+	    if(size > 0)
+	    {
+		  uint8_t RSSI;
+		  circular_buf_get(Key_RSSI_buffer_handle_t, &RSSI);
+		  Key_RSSI_Counter++;
+
+		  	if (Key_RSSI_Counter == 1)
+		  	{
+				Key_RSSI_Mean = RSSI;
+			}
+
+			if (Key_RSSI_Counter < 100)
+			{
+				Key_RSSI_Mean += RSSI;
+				Key_RSSI_Mean /= 2;
+			}
+
+			if (Key_RSSI_Counter >= 100)
+			{
+				if (settingsMode == 'T')
+				{
+					if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
+					{
+						Key_Bit_Counter++;
+						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, RSSI);
+					}
+					else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
+					{
+						Key_Bit_Counter++;
+						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, RSSI);
+					}
+				}
+			}
+
+			if (Key_Bit_Counter == 80)
+			{
+				HAL_TIM_Base_Stop_IT(&htim9);
+
+				OLED_clear_screen();
+				OLED_print_variable("Mean:", Key_RSSI_Mean, 0, 16);
+				OLED_print_text("Key bits:", 0, 26);
+
+				for (int i=0; i<4; i++)
+				{
+					uint8_t data;
+					circular_buf_get(Key_RSSI_Threshold_buffer_handle_t, &data);
+					OLED_print_variable(";", data, 28*i, 36);
+				}
+				for (int i=0; i<4; i++)
+				{
+					uint8_t data;
+					circular_buf_get(Key_RSSI_Threshold_buffer_handle_t, &data);
+					OLED_print_variable(";", data, 28*i, 46);
+				}
+				OLED_update();
+			}
+	    }
 //	if (settingsMode == 'R')
 //	{
 //		if (INT_PACKET_RECEIVED)
@@ -512,7 +593,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -576,6 +657,9 @@ static void MX_RTC_Init(void)
 
   /* USER CODE END RTC_Init 0 */
 
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
   /* USER CODE BEGIN RTC_Init 1 */
 
   /* USER CODE END RTC_Init 1 */
@@ -599,8 +683,8 @@ static void MX_RTC_Init(void)
 
   /** Initialize RTC and set the Time and Date 
   */
-  sTime.Hours = 14;
-  sTime.Minutes = 05;
+  sTime.Hours = 13;
+  sTime.Minutes = 39;
   sTime.Seconds = 0;
   sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sTime.StoreOperation = RTC_STOREOPERATION_RESET;
@@ -610,8 +694,8 @@ static void MX_RTC_Init(void)
   }
   sDate.WeekDay = RTC_WEEKDAY_SATURDAY;
   sDate.Month = RTC_MONTH_APRIL;
-  sDate.Date = 18;
-  sDate.Year = 2020;
+  sDate.Date = 14;
+  sDate.Year = 0;
 
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
   {
@@ -822,7 +906,7 @@ static void MX_TIM9_Init(void)
   htim9.Instance = TIM9;
   htim9.Init.Prescaler = 96;
   htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 10000;
+  htim9.Init.Period = 20000;
   htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
@@ -909,8 +993,37 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void Startup(void)
+{
+	OLED_init();
+	OLED_print_text("Jelle's Walkie", 10, 30);
+	OLED_update();
+
+	HAL_Delay(2000);
+
+	ADF_Init(settingsFrequency);
+	Setup(settingsMode);
+
+	if (settingsMode == 'R')
+	{
+	  ADF_set_turnaround_Rx_Tx();
+	  WriteKeyPacket();
+	}
+}
+
 void Setup(char mode)
 {
+	// Buffer for RSSI values
+	uint16_t Key_RSSI_buffer_size = 1000;
+	uint8_t *Key_RSSI_buffer = malloc(Key_RSSI_buffer_size * sizeof(uint8_t));
+	Key_RSSI_buffer_handle_t = circular_buf_init(Key_RSSI_buffer, Key_RSSI_buffer_size);
+
+	// Buffer for thresholded RSSI values
+	uint16_t Key_RSSI_Threshold_buffer_size = 1000;
+	uint8_t *Key_RSSI_Threshold_buffer = malloc(Key_RSSI_Threshold_buffer_size * sizeof(uint8_t));
+	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
+
 	OLED_clear_screen();
 	OLED_print_date_and_time();
 
@@ -1095,77 +1208,19 @@ void ReadKeyPacket(void)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
-	Key_RSSI_Counter++;
-
 	while (ADF_SPI_READY() == 0);
 
-	if (Key_RSSI_Mean == 0)
-		Key_RSSI_Mean = Key_RSSI;
-
-	if (Key_RSSI_Counter < 200)
-	{
-		Key_RSSI_Mean += Key_RSSI;
-		Key_RSSI_Mean /= 2;
-	}
-	else
-	{
-		OLED_clear_screen();
-		OLED_print_variable("Mean RSSI:", Key_RSSI_Mean, 0, 16);
-		OLED_update();
-	}
+	circular_buf_put_overwrite(Key_RSSI_buffer_handle_t, Key_RSSI);
 }
 
 void WriteKeyPacket(void)
 {
-	while (ADF_SPI_READY() == 0);
-
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	uint8_t bytes[] = {0x10, 0x05, 0x01, 0xff};
 	HAL_SPI_Transmit(&hspi2, bytes, 4, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
-}
-
-void KeyInit(void)
-{
-	// Buffer for RSSI values
-	uint16_t Key_RSSI_buffer_size = 1000;
-	uint8_t *Key_RSSI_buffer = malloc(Key_RSSI_buffer_size * sizeof(uint8_t));
-	Key_RSSI_buffer_handle_t = circular_buf_init(Key_RSSI_buffer, Key_RSSI_buffer_size);
-
-	// Buffer for thresholded RSSI values
-	uint16_t Key_RSSI_Threshold_buffer_size = 1000;
-	uint8_t *Key_RSSI_Threshold_buffer = malloc(Key_RSSI_Threshold_buffer_size * sizeof(uint8_t));
-	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
-
-	HAL_TIM_Base_Start_IT(&htim9);
-}
-
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-	if (settingsDownsampling)
-	{
-		if (counter%2)
-		{
-			adcVal = HAL_ADC_GetValue(&hadc1);
-			counter++;
-		}
-		else
-		{
-			adcValDownSampled = HAL_ADC_GetValue(&hadc1);
-			adcValDownSampled += adcVal;
-			adcValDownSampled /= 2;
-			circular_buf_put_overwrite(Tx_buffer_handle_t, adcValDownSampled);
-			counter++;
-		}
-	}
-	else
-	{
-		adcVal = HAL_ADC_GetValue(&hadc1);
-		circular_buf_put_overwrite(Tx_buffer_handle_t, adcVal);
-		counter++;
-	}
 }
 
 /* USER CODE END 4 */
