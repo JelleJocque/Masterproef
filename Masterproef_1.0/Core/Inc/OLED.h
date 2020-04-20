@@ -39,6 +39,7 @@ void OLED_print_date_and_time(void);
 void OLED_print_variable(char[], uint32_t, uint8_t, uint8_t);
 void OLED_clear_screen(void);
 void OLED_update(void);
+void OLED_shutdown(void);
 
 #ifdef __cplusplus
 }

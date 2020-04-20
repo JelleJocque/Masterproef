@@ -135,7 +135,7 @@ uint8_t Key_SQI;
 uint32_t KeyPacketCounter;
 uint32_t Timer9Counter;
 
-uint8_t Key_RSSI_Threshold = 10;
+uint8_t Key_RSSI_Threshold = 5;
 
 cbuf_handle_t Key_RSSI_buffer_handle_t;
 cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
@@ -179,6 +179,7 @@ void Receive(void);
 /* Encryption functions */
 void WriteKeyPacket(void);
 void ReadKeyPacket(void);
+void WriteACKPacket(void);
 
 /* USER CODE END PFP */
 
@@ -198,9 +199,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			if (settingsMode == 'R')
 			{
 				KeyPacketCounter++;
-				ReadKeyPacket();
 				WriteKeyPacket();
 				ADF_set_Rx_mode();
+				ReadKeyPacket();
 			}
 
 			break;
@@ -231,10 +232,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			break;
 
 		case BUTTON_PWR_Pin:
-			OLED_clear_screen();
-			OLED_update();
-			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386 to prevent power consumption
-			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
+			while (HAL_GPIO_ReadPin(BUTTON_PWR_GPIO_Port, BUTTON_PWR_Pin));
+			HAL_Delay(100);
+
+			OLED_shutdown();																	// Shutdown OLED display
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone
 
 			HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
 			HAL_PWR_EnterSTANDBYMode();
@@ -310,7 +313,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+   HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -338,7 +341,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'I';
+  settingsMode = 'R';
   settingsDownsampling = 1;
   settingsSampleRate = 16000;
   settingsVolume = 24;
@@ -379,37 +382,48 @@ int main(void)
 				{
 					if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
 					{
+						// Key bit 0
 						Key_Bit_Counter++;
-						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, RSSI);
+						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 0);
+
+						// Send ACK packet to Receiver
+						WriteACKPacket();
+						ADF_set_Tx_mode();
 					}
 					else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
 					{
+						// Key bit 1
 						Key_Bit_Counter++;
-						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, RSSI);
+						circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 1);
+
+						// Send ACK packet to Receiver
+						WriteACKPacket();
+						ADF_set_Tx_mode();
 					}
 				}
 			}
 
-			if (Key_Bit_Counter == 80)
+			if (Key_Bit_Counter == 36)
 			{
 				HAL_TIM_Base_Stop_IT(&htim9);
 
 				OLED_clear_screen();
 				OLED_print_variable("Mean:", Key_RSSI_Mean, 0, 16);
-				OLED_print_text("Key bits:", 0, 26);
+				OLED_print_variable("Key bits:", Key_Bit_Counter, 0, 26);
 
-				for (int i=0; i<4; i++)
+				for (int i=0; i<18; i++)
 				{
 					uint8_t data;
 					circular_buf_get(Key_RSSI_Threshold_buffer_handle_t, &data);
-					OLED_print_variable(";", data, 28*i, 36);
+					OLED_print_variable("", data, 7*i, 36);
 				}
-				for (int i=0; i<4; i++)
+				for (int i=0; i<18; i++)
 				{
 					uint8_t data;
 					circular_buf_get(Key_RSSI_Threshold_buffer_handle_t, &data);
-					OLED_print_variable(";", data, 28*i, 46);
+					OLED_print_variable("", data, 7*i, 46);
 				}
+
 				OLED_update();
 			}
 	    }
@@ -984,7 +998,7 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
@@ -1014,6 +1028,11 @@ void Startup(void)
 
 void Setup(char mode)
 {
+	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+	/* Clear PWR wake up Flag */
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+
 	// Buffer for RSSI values
 	uint16_t Key_RSSI_buffer_size = 1000;
 	uint8_t *Key_RSSI_buffer = malloc(Key_RSSI_buffer_size * sizeof(uint8_t));
@@ -1030,13 +1049,13 @@ void Setup(char mode)
 	switch(mode)
 	{
 		case 'I':
-			OLED_print_title("Idle", 0, 0);
+			OLED_print_text("Idle", 0, 0);
 			OLED_update();
 
 			break;
 
 		case 'T':
-			OLED_print_title("Tx", 0, 0);
+			OLED_print_text("Tx", 0, 0);
 
 			/* Power savings */
 			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386 to prevent power consumption
@@ -1073,7 +1092,8 @@ void Setup(char mode)
 			Rx_buffer_handle_t = circular_buf_init(Rx_buffer, Rx_buffer_size);					// Rx buffer handle type
 
 			/* OLED debug */
-			OLED_print_variable("POT volume:", settingsVolume, 0, 10);
+			OLED_print_variable("POT volume:", settingsVolume, 0, 16);
+			OLED_update();
 
 //			/* HAL audio settings for Rx mode */
 //			Potmeter_Init(settingsVolume);														// Setting the volume with the potentiometer
@@ -1082,12 +1102,6 @@ void Setup(char mode)
 
 			/* Rx mode */
 			ADF_set_Rx_mode();																	// Rx mode
-
-			/* OLED debug */
-			uint8_t status;
-			status = ADF_SPI_SEND_BYTE(0xff);
-			OLED_print_variable("Status:", status, 0, 20);
-			OLED_update();
 
 			break;
 	}
@@ -1211,12 +1225,40 @@ void ReadKeyPacket(void)
 	while (ADF_SPI_READY() == 0);
 
 	circular_buf_put_overwrite(Key_RSSI_buffer_handle_t, Key_RSSI);
+
+	if (Key_Pkt_type == 2)
+	{
+		if (Key_RSSI <= Key_RSSI_Mean)
+		{
+			Key_Bit_Counter++;
+			circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 0);
+		}
+		else if (Key_RSSI > Key_RSSI_Mean)
+		{
+			Key_Bit_Counter++;
+			circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 1);
+		}
+	}
 }
 
 void WriteKeyPacket(void)
 {
+	while (ADF_SPI_READY() == 0);
+
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	uint8_t bytes[] = {0x10, 0x05, 0x01, 0xff};
+	uint8_t bytes[] = {0x10, 0x05, 0x01, 0xff};									// TYPE = 0x01 => Key packet
+	HAL_SPI_Transmit(&hspi2, bytes, 4, 50);
+	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
+
+	while (ADF_SPI_READY() == 0);
+}
+
+void WriteACKPacket(void)
+{
+	while (ADF_SPI_READY() == 0);
+
+	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
+	uint8_t bytes[] = {0x10, 0x05, 0x02, 0xff};									// TYPE = 0x02 => ACK packet
 	HAL_SPI_Transmit(&hspi2, bytes, 4, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 

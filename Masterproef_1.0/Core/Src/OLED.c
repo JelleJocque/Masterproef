@@ -92,3 +92,8 @@ void OLED_update(void)
 {
 	SSD1306_UpdateScreen();
 }
+
+void OLED_shutdown(void)
+{
+	SSD1306_OFF();
+}

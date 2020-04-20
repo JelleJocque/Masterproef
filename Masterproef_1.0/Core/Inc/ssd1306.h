@@ -271,7 +271,6 @@ void ssd1306_I2C_WriteMulti(uint8_t address, uint8_t reg, uint8_t *data, uint16_
 void SSD1306_DrawBitmap(int16_t x, int16_t y, const unsigned char* bitmap, int16_t w, int16_t h, uint16_t color);
 
 // scroll the screen for fixed rows
-
 void SSD1306_ScrollRight(uint8_t start_row, uint8_t end_row);
 
 
@@ -284,23 +283,15 @@ void SSD1306_Scrolldiagright(uint8_t start_row, uint8_t end_row);
 void SSD1306_Scrolldiagleft(uint8_t start_row, uint8_t end_row);
 
 
-
 void SSD1306_Stopscroll(void);
 
 
 // inverts the display i = 1->inverted, i = 0->normal
-
 void SSD1306_InvertDisplay (int i);
 
 
-
-
-
-
 // clear the display
-
 void SSD1306_Clear (void);
-
 
 /* C++ detection */
 #ifdef __cplusplus
