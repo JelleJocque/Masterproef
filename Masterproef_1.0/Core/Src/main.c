@@ -157,6 +157,7 @@ void Audio_Buffer_Read(uint16_t *buffer);
 void Play_Audio(void);
 
 void SendPacket(void);
+void SendPacket8bit(void);
 void ReadPacket(void);
 
 /* Encryption functions */
@@ -302,7 +303,7 @@ int main(void)
   settingsVolume = 24;
   settingsDataLength = 40;
   settingsResolution = 8;
-  settingsEncryption = 0;
+  settingsEncryption = 1;
   settingsFrequency = 245000;
 
   Startup();
@@ -313,22 +314,55 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if (INT_PACKET_RECEIVED){
-		INT_PACKET_RECEIVED = 0;
+	  if (settingsMode == 'T')
+	  {
+		  // Send audio packet
+		  if (circular_buf_size(Tx_buffer_handle_t) > 40)
+		  {
+			  if (settingsResolution == 8)
+			  {
+				  SendPacket8bit();
+			  }
+		  }
+	  }
 
-		if (settingsMode == 'R')
-		{
-			Rx_Pkt_counter++;
-			WriteKeyPacket();
-			ReadPacket();
-			ADF_set_Rx_mode();
-		}
+	  // Encryption
+	  if (settingsEncryption)
+	  {
+		  if (INT_PACKET_RECEIVED){
+			  INT_PACKET_RECEIVED = 0;
 
-		if (settingsMode == 'T')
-		{
-			KeyPacketCounter++;
-			ReadKeyPacket();				// TAKING TOO LONG!!!
-		}
+			  if (settingsMode == 'T')
+			  {
+				  KeyPacketCounter++;
+				  ReadKeyPacket();
+			  }
+		  }
+
+		  if (INT_PACKET_SEND){
+			  INT_PACKET_SEND = 0;
+
+			  if (settingsMode == 'R')
+			  {
+				  Rx_Pkt_counter++;
+				  WriteKeyPacket();
+				  ADF_set_Rx_mode();
+				  ReadPacket();
+			  }
+		  }
+	  }
+	  else
+	  {
+		  if (INT_PACKET_RECEIVED){
+			INT_PACKET_RECEIVED = 0;
+
+			if (settingsMode == 'R')
+			{
+				Rx_Pkt_counter++;
+				ReadPacket();
+				ADF_set_Rx_mode();
+			}
+		  }
 	  }
 
 //	    uint16_t size = circular_buf_size(Key_RSSI_buffer_handle_t);
@@ -984,6 +1018,14 @@ void Startup(void)
 
 	ADF_Init(settingsFrequency);
 	Setup();
+
+	if (settingsEncryption)
+	{
+		if (settingsMode == 'R')
+		{
+			WriteKeyPacket();
+		}
+	}
 }
 
 void Setup()
@@ -1036,9 +1078,9 @@ void Setup()
 			/* HAL audio settings for Tx mode */
 			HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_1);											// Start timer 5 (frequency = 16 kHz)
 			HAL_ADC_Start_IT(&hadc1);															// Start ADC interrupt triggered by timer 5
-			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
+//			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
 
-			//HAL_TIM_Base_Start_IT(&htim9);
+//			HAL_TIM_Base_Start_IT(&htim9);
 
 			break;
 
@@ -1166,6 +1208,23 @@ void SendPacket(void)
 	}
 }
 
+void SendPacket8bit(void)
+{
+	uint8_t header[] = {0x10, settingsDataLength + 5, settingsResolution, settingsDataLength};
+
+	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_Transmit_IT(&hspi2, header, 4);
+
+	// Write 40 audio samples to transceiver
+	for (int i=0; i<settingsDataLength; i++)
+	{
+		uint8_t sample[1];
+		returnValue = circular_buf_get(Tx_buffer_handle_t, &sample);
+		HAL_SPI_Transmit_IT(&hspi2, sample, 1);
+	}
+	ADF_set_Tx_mode();
+}
+
 void ReadPacket(void)
 {
 	uint8_t Rx_Pkt_length;
@@ -1177,17 +1236,17 @@ void ReadPacket(void)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
-	HAL_SPI_Transmit(&hspi2, bytes, 2, 50);
+	HAL_SPI_Transmit_IT(&hspi2, bytes, 2);
 
-	HAL_SPI_Receive(&hspi2, &Rx_Pkt_length, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Rx_Pkt_type, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Rx_Data_length, 1, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_length, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_type, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Data_length, 1);
 
 	uint8_t Rx_data[Rx_Data_length];
-	HAL_SPI_Receive(&hspi2, &Rx_data, Rx_Data_length, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_data, Rx_Data_length);
 
-	HAL_SPI_Receive(&hspi2, &Rx_RSSI, 1, 50);		// KLOPT NIET
-	HAL_SPI_Receive(&hspi2, &Rx_RSSI, 1, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);		// KLOPT NIET
+	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1214,13 +1273,13 @@ void ReadKeyPacket(void)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
 	uint8_t bytes[] = {0x30, 0xff};
-	HAL_SPI_Transmit(&hspi2, bytes, 2, 50);
+	HAL_SPI_Transmit_IT(&hspi2, bytes, 2);
 
-	HAL_SPI_Receive(&hspi2, &Pkt_length, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Pkt_type, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Pkt_dummy, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Pkt_not_needed, 1, 50);
-	HAL_SPI_Receive(&hspi2, &Pkt_RSSI, 1, 50);
+	HAL_SPI_Receive_IT(&hspi2, &Pkt_length, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Pkt_type, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Pkt_dummy, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Pkt_not_needed, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Pkt_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1249,7 +1308,7 @@ void WriteKeyPacket(void)
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	uint8_t bytes[] = {0x10, 0x05, 0x01, 0xff};									// TYPE = 0x01 => Key packet
-	HAL_SPI_Transmit(&hspi2, bytes, 4, 50);
+	HAL_SPI_Transmit_IT(&hspi2, bytes, 4);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
