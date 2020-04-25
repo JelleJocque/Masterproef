@@ -39,7 +39,6 @@ void ADF_Init(uint32_t);
 void ADF_SPI_MEM_WR(uint16_t, uint8_t);
 uint8_t ADF_SPI_MEM_RD(uint16_t);
 void ADF_SPI_RD_Rx_Buffer(void);
-void ADF_SPI_RD_Response(void);
 uint8_t ADF_SPI_SEND_BYTE(uint8_t);
 void ADF_SET_FREQ_kHz(uint32_t);
 uint32_t ADF_RD_Frequency_MHz(void);

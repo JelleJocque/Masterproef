@@ -32,7 +32,9 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ADF7242.h"
+#include "OLED.h"
+#include "CBUF.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -61,10 +63,15 @@ void Error_Handler(void);
 #define BUTTON_TALK_Pin GPIO_PIN_1
 #define BUTTON_TALK_GPIO_Port GPIOA
 #define BUTTON_TALK_EXTI_IRQn EXTI1_IRQn
-#define BUTTON3_Pin GPIO_PIN_3
-#define BUTTON3_GPIO_Port GPIOA
-#define BUTTON2_Pin GPIO_PIN_4
-#define BUTTON2_GPIO_Port GPIOA
+#define BUTTON_DOWN_Pin GPIO_PIN_3
+#define BUTTON_DOWN_GPIO_Port GPIOA
+#define BUTTON_DOWN_EXTI_IRQn EXTI3_IRQn
+#define BUTTON_OK_Pin GPIO_PIN_4
+#define BUTTON_OK_GPIO_Port GPIOA
+#define BUTTON_OK_EXTI_IRQn EXTI4_IRQn
+#define BUTTON_DOWNA6_Pin GPIO_PIN_6
+#define BUTTON_DOWNA6_GPIO_Port GPIOA
+#define BUTTON_DOWNA6_EXTI_IRQn EXTI9_5_IRQn
 #define POT_MOSI_Pin GPIO_PIN_7
 #define POT_MOSI_GPIO_Port GPIOA
 #define DMIC_CK_Pin GPIO_PIN_0
