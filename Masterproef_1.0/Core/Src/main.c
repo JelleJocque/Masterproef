@@ -107,15 +107,13 @@ uint16_t Rx_sample1;
 uint16_t Rx_sample2;
 uint8_t Rx_RSSI;
 uint8_t Rx_SQI;
-uint32_t test;
 
 /* Encryption variables */
 uint32_t KeyPacketCounter;
-uint32_t Timer9Counter;
 
 uint8_t Key_RSSI_Threshold = 10;
 
-cbuf_handle_t Key_RSSI_buffer_handle_t;
+cbuf_handle_t RSSI_buffer_handle_t;
 cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
 
 uint32_t Key_RSSI_Counter;
@@ -124,6 +122,9 @@ uint16_t Key_Bit_Counter;
 
 uint32_t Packets_Received;
 uint32_t Packets_Send;
+
+uint8_t Key_Start = 0b11110000;
+uint8_t Key_Current;
 
 /* USER CODE END PV */
 
@@ -218,20 +219,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if (htim->Instance == TIM1)
 	{
-		if (settingsMode == 'T')
-		{
-			SendPacket();
-		}
-		else if (settingsMode == 'R')
-		{
-			test++;
-			Play_Audio();
-		}
+		Play_Audio();
 	}
 
 	if (htim->Instance == TIM9)
 	{
-		Timer9Counter++;
 		WriteKeyPacket();
 		ADF_set_Tx_mode();
 	}
@@ -253,6 +245,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		circular_buf_put_overwrite(Tx_buffer_handle_t, adcValDownSampled);
 		counter++;
 	}
+}
+
+/* Callback RTC alarm */
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+	OLED_print_date_and_time();
+	OLED_update();
 }
 
 /* USER CODE END 0 */
@@ -719,7 +718,7 @@ static void MX_RTC_Init(void)
   sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
   sAlarm.AlarmDateWeekDay = 1;
   sAlarm.Alarm = RTC_ALARM_A;
-  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BIN) != HAL_OK)
+  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) != HAL_OK)
   {
     Error_Handler();
   }
@@ -967,17 +966,23 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin|POT_CS_Pin|A_MIC_POWER_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : BUTTON_TALK_Pin BUTTON_DOWN_Pin BUTTON_OK_Pin BUTTON_DOWNA6_Pin
-                           ADF7242_IRQ1_Pin ADF7242_IRQ2_Pin */
-  GPIO_InitStruct.Pin = BUTTON_TALK_Pin|BUTTON_DOWN_Pin|BUTTON_OK_Pin|BUTTON_DOWNA6_Pin
-                          |ADF7242_IRQ1_Pin|ADF7242_IRQ2_Pin;
+  /*Configure GPIO pin : BUTTON_TALK_Pin */
+  GPIO_InitStruct.Pin = BUTTON_TALK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(BUTTON_TALK_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : BUTTON_DOWN_Pin BUTTON_OK_Pin BUTTON_DOWNA6_Pin ADF7242_IRQ1_Pin 
+                           ADF7242_IRQ2_Pin */
+  GPIO_InitStruct.Pin = BUTTON_DOWN_Pin|BUTTON_OK_Pin|BUTTON_DOWNA6_Pin|ADF7242_IRQ1_Pin 
+                          |ADF7242_IRQ2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : BUTTON_PWR_Pin */
   GPIO_InitStruct.Pin = BUTTON_PWR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BUTTON_PWR_GPIO_Port, &GPIO_InitStruct);
 
@@ -989,7 +994,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
   HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
@@ -1021,6 +1026,8 @@ void Startup(void)
 
 	if (settingsEncryption)
 	{
+		Key_Current = Key_Start;
+
 		if (settingsMode == 'R')
 		{
 			WriteKeyPacket();
@@ -1036,9 +1043,9 @@ void Setup()
 	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
 
 	// Buffer for RSSI values
-	uint16_t Key_RSSI_buffer_size = 1000;
-	uint8_t *Key_RSSI_buffer = malloc(Key_RSSI_buffer_size * sizeof(uint8_t));
-	Key_RSSI_buffer_handle_t = circular_buf_init(Key_RSSI_buffer, Key_RSSI_buffer_size);
+	uint16_t RSSI_buffer_size = 1000;
+	uint8_t *RSSI_buffer = malloc(RSSI_buffer_size * sizeof(uint8_t));
+	RSSI_buffer_handle_t = circular_buf_init(RSSI_buffer, RSSI_buffer_size);
 
 	// Buffer for thresholded RSSI values
 	uint16_t Key_RSSI_Threshold_buffer_size = 1000;
@@ -1210,18 +1217,39 @@ void SendPacket(void)
 
 void SendPacket8bit(void)
 {
-	uint8_t header[] = {0x10, settingsDataLength + 5, settingsResolution, settingsDataLength};
+	uint8_t PacketTotalLength = settingsDataLength + 5;
+	uint8_t PacketType = (settingsEncryption<<4) | settingsResolution;
+
+	uint8_t header[] = {0x10, PacketTotalLength, PacketType, settingsDataLength};
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_Transmit_IT(&hspi2, header, 4);
 
-	// Write 40 audio samples to transceiver
-	for (int i=0; i<settingsDataLength; i++)
+	if (settingsEncryption)
 	{
-		uint8_t sample[1];
-		returnValue = circular_buf_get(Tx_buffer_handle_t, &sample);
-		HAL_SPI_Transmit_IT(&hspi2, sample, 1);
+		// Write 40 audio samples to transceiver
+		for (int i=0; i<settingsDataLength; i++)
+		{
+			uint8_t sample[1];
+			returnValue = circular_buf_get(Tx_buffer_handle_t, &sample);
+
+			uint8_t EncryptedSample[1];
+			EncryptedSample[0]= sample[0] ^ Key_Start;
+			HAL_SPI_Transmit_IT(&hspi2, EncryptedSample, 1);
+		}
 	}
+	else
+	{
+		// Write 40 audio samples to transceiver
+		for (int i=0; i<settingsDataLength; i++)
+		{
+			uint8_t sample[1];
+			returnValue = circular_buf_get(Tx_buffer_handle_t, &sample);
+
+			HAL_SPI_Transmit_IT(&hspi2, sample, 1);
+		}
+	}
+
 	ADF_set_Tx_mode();
 }
 
@@ -1245,7 +1273,7 @@ void ReadPacket(void)
 	uint8_t Rx_data[Rx_Data_length];
 	HAL_SPI_Receive_IT(&hspi2, &Rx_data, Rx_Data_length);
 
-	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);		// KLOPT NIET
+	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);		// Wrong value
 	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
@@ -1285,7 +1313,7 @@ void ReadKeyPacket(void)
 
 	while (ADF_SPI_READY() == 0);
 
-	circular_buf_put_overwrite(Key_RSSI_buffer_handle_t, Pkt_RSSI);
+	circular_buf_put_overwrite(RSSI_buffer_handle_t, Pkt_RSSI);
 
 	if (Pkt_type == 2)
 	{
