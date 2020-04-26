@@ -67,6 +67,7 @@ uint8_t settingsDataLength;					// Number of databytes in audio packet
 uint8_t settingsResolution;					// 8 or 12 (ADC resolution)
 uint8_t settingsEncryption;					// 0 = Encryption off, 1 = Encryption on
 uint32_t settingsFrequency;					// Frequency in kHz
+double settingsFirmwareVersion;
 
 /* General variables */
 uint8_t returnValue;
@@ -298,6 +299,7 @@ int main(void)
   settingsResolution = 8;
   settingsEncryption = 1;
   settingsFrequency = 245000;
+  settingsFirmwareVersion = 1.0;
 
   Startup();
 
@@ -992,10 +994,11 @@ static void MX_GPIO_Init(void)
 void Startup(void)
 {
 	OLED_init();
-	OLED_print_text("Jelle's Walkie", 10, 30);
+	OLED_print_text("Jelle's", 39, 16);
+	OLED_print_text("Walkie Talkie", 18, 26);
 	OLED_update();
 
-	HAL_Delay(2000);
+	HAL_Delay(3000);
 
 	ADF_Init(settingsFrequency);
 	Setup();
@@ -1028,6 +1031,7 @@ void Setup()
 	uint8_t *Key_RSSI_Threshold_buffer = malloc(Key_RSSI_Threshold_buffer_size * sizeof(uint8_t));
 	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
 
+	OLED_clear_screen();
 	HAL_TIM_Base_Start_IT(&htim9);
 
 	switch(settingsMode)
