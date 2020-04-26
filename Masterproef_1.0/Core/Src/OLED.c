@@ -33,6 +33,7 @@ void OLED_print_title(char command[], uint8_t x, uint8_t y)
 void OLED_print_date_and_time(void)
 {
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
 	uint8_t hours = sTime.Hours;
 	uint8_t minutes = sTime.Minutes;

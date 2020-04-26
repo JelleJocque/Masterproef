@@ -224,8 +224,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	if (htim->Instance == TIM9)
 	{
-		WriteKeyPacket();
-		ADF_set_Tx_mode();
+		/* Update Time every 10 seconds */
+		OLED_print_date_and_time();
+		OLED_update();
 	}
 }
 
@@ -245,13 +246,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		circular_buf_put_overwrite(Tx_buffer_handle_t, adcValDownSampled);
 		counter++;
 	}
-}
-
-/* Callback RTC alarm */
-void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
-{
-	OLED_print_date_and_time();
-	OLED_update();
 }
 
 /* USER CODE END 0 */
@@ -662,7 +656,6 @@ static void MX_RTC_Init(void)
 
   RTC_TimeTypeDef sTime = {0};
   RTC_DateTypeDef sDate = {0};
-  RTC_AlarmTypeDef sAlarm = {0};
 
   /* USER CODE BEGIN RTC_Init 1 */
 
@@ -702,23 +695,6 @@ static void MX_RTC_Init(void)
   sDate.Year = 0;
 
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Enable the Alarm A 
-  */
-  sAlarm.AlarmTime.Hours = 0;
-  sAlarm.AlarmTime.Minutes = 1;
-  sAlarm.AlarmTime.Seconds = 0;
-  sAlarm.AlarmTime.SubSeconds = 0;
-  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
-  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-  sAlarm.AlarmDateWeekDay = 1;
-  sAlarm.Alarm = RTC_ALARM_A;
-  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) != HAL_OK)
   {
     Error_Handler();
   }
@@ -925,7 +901,7 @@ static void MX_TIM9_Init(void)
 
   /* USER CODE END TIM9_Init 1 */
   htim9.Instance = TIM9;
-  htim9.Init.Prescaler = 96;
+  htim9.Init.Prescaler = 48000;
   htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim9.Init.Period = 20000;
   htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -1052,8 +1028,7 @@ void Setup()
 	uint8_t *Key_RSSI_Threshold_buffer = malloc(Key_RSSI_Threshold_buffer_size * sizeof(uint8_t));
 	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
 
-	OLED_clear_screen();
-	OLED_print_date_and_time();
+	HAL_TIM_Base_Start_IT(&htim9);
 
 	switch(settingsMode)
 	{
@@ -1086,8 +1061,6 @@ void Setup()
 			HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_1);											// Start timer 5 (frequency = 16 kHz)
 			HAL_ADC_Start_IT(&hadc1);															// Start ADC interrupt triggered by timer 5
 //			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
-
-//			HAL_TIM_Base_Start_IT(&htim9);
 
 			break;
 
