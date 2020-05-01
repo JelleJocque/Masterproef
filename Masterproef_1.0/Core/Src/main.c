@@ -297,7 +297,7 @@ int main(void)
   settingsVolume = 24;
   settingsDataLength = 40;
   settingsResolution = 8;
-  settingsEncryption = 0;
+  settingsEncryption = 1;
   settingsFrequency = 245000;
 
   Startup();
