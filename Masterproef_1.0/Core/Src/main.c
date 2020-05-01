@@ -293,13 +293,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Settings */
-  settingsMode = 'I';
+  settingsMode = 'R';
   settingsVolume = 24;
   settingsDataLength = 40;
   settingsResolution = 8;
-  settingsEncryption = 1;
+  settingsEncryption = 0;
   settingsFrequency = 245000;
-  settingsFirmwareVersion = 1.0;
 
   Startup();
 
