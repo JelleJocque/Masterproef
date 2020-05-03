@@ -61,7 +61,7 @@ RTC_TimeTypeDef sTime;
 RTC_DateTypeDef sDate;
 
 /* Settings */
-char settingsMode = 'I';
+char settingsMode = 'R';
 uint8_t settingsVolume = 24;							// Digital value of potentiometer for volume
 uint8_t settingsDataLength = 40;						// Number of databytes in audio packet
 uint8_t settingsResolution = 8;							// 8 or 12 (ADC resolution)
@@ -109,22 +109,21 @@ uint8_t Rx_RSSI;
 uint8_t Rx_SQI;
 
 /* Encryption variables */
-uint32_t KeyPacketCounter;
-
 uint8_t Key_RSSI_Threshold = 10;
 
 cbuf_handle_t RSSI_buffer_handle_t;
 cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
 
-uint32_t Key_RSSI_Counter;
+uint32_t RSSI_counter;
 uint16_t Key_RSSI_Mean;
-uint16_t Key_Bit_Counter;
+
+uint8_t Key_Start = 0b10101010;
+uint8_t Key_Current;
 
 uint32_t Packets_Received;
 uint32_t Packets_Send;
 
-uint8_t Key_Start = 0b10101010;
-uint8_t Key_Current;
+double ALPHA = 0.1;
 
 /* USER CODE END PV */
 
@@ -229,6 +228,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		/* Update Time every 10 seconds */
 		OLED_print_date_and_time();
+		OLED_print_variable("RSSI mean:", Key_RSSI_Mean, 0, 36);
 		OLED_update();
 	}
 }
@@ -322,8 +322,11 @@ int main(void)
 
 			  if (settingsMode == 'T')
 			  {
-				  KeyPacketCounter++;
-				  uint8_t RSSI = ReadRSSI();
+				  if (!RSSI_counter)
+					  Key_RSSI_Mean = ReadRSSI();
+				  else
+					  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
+				  RSSI_counter++;
 			  }
 		  }
 
@@ -332,9 +335,17 @@ int main(void)
 
 			  if (settingsMode == 'R')
 			  {
-				  Rx_Pkt_counter++;
+				  // Update RSSI mean value!
+				  // BLOCKING AND TAKING TOO LONG MAYBE!!!
+				  if (!RSSI_counter)
+					  Key_RSSI_Mean = ReadRSSI();
+				  else
+					  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
+				  RSSI_counter++;
+
 				  WriteKeyPacket();
 				  ADF_set_Rx_mode();
+
 				  ReadPacket();
 			  }
 		  }
@@ -898,7 +909,7 @@ static void MX_TIM9_Init(void)
   htim9.Instance = TIM9;
   htim9.Init.Prescaler = 48000;
   htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 20000;
+  htim9.Init.Period = 6000;
   htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
@@ -1025,7 +1036,7 @@ void Setup()
 	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
 
 	OLED_clear_screen();
-//	HAL_TIM_Base_Start_IT(&htim9);
+	HAL_TIM_Base_Start_IT(&htim9);
 
 	switch(settingsMode)
 	{
@@ -1242,9 +1253,6 @@ void ReadPacket(void)
 	uint8_t Rx_data[Rx_Data_length];
 	HAL_SPI_Receive_IT(&hspi2, &Rx_data, Rx_Data_length);
 
-	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);		// Wrong value
-	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
-
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
@@ -1284,12 +1292,10 @@ void ReadKeyPacket(void)
 	{
 		if (Pkt_RSSI <= Key_RSSI_Mean)
 		{
-			Key_Bit_Counter++;
 			circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 0);
 		}
 		else if (Pkt_RSSI > Key_RSSI_Mean)
 		{
-			Key_Bit_Counter++;
 			circular_buf_put_overwrite(Key_RSSI_Threshold_buffer_handle_t, 1);
 		}
 	}
