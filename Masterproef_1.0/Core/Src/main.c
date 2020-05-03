@@ -61,13 +61,12 @@ RTC_TimeTypeDef sTime;
 RTC_DateTypeDef sDate;
 
 /* Settings */
-char settingsMode;
-uint8_t settingsVolume;						// Digital value of potentiometer for volume
-uint8_t settingsDataLength;					// Number of databytes in audio packet
-uint8_t settingsResolution;					// 8 or 12 (ADC resolution)
-uint8_t settingsEncryption;					// 0 = Encryption off, 1 = Encryption on
-uint32_t settingsFrequency;					// Frequency in kHz
-double settingsFirmwareVersion;
+char settingsMode = 'I';
+uint8_t settingsVolume = 24;							// Digital value of potentiometer for volume
+uint8_t settingsDataLength = 40;						// Number of databytes in audio packet
+uint8_t settingsResolution = 8;							// 8 or 12 (ADC resolution)
+uint8_t settingsEncryption = 1;							// 0 = Encryption off, 1 = Encryption on
+uint32_t settingsFrequency = 245000;					// Frequency in kHz
 
 /* General variables */
 uint8_t returnValue;
@@ -124,7 +123,7 @@ uint16_t Key_Bit_Counter;
 uint32_t Packets_Received;
 uint32_t Packets_Send;
 
-uint8_t Key_Start = 0b11110000;
+uint8_t Key_Start = 0b10101010;
 uint8_t Key_Current;
 
 /* USER CODE END PV */
@@ -166,6 +165,9 @@ void ReadPacket(void);
 void WriteKeyPacket(void);
 void ReadKeyPacket(void);
 void WriteACKPacket(void);
+uint8_t ReadRSSI(void);
+uint8_t rotateLeft(uint8_t, uint8_t);
+uint8_t rotateRight(uint8_t, uint8_t);
 
 /* USER CODE END PFP */
 
@@ -292,14 +294,6 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
-  /* Settings */
-  settingsMode = 'R';
-  settingsVolume = 24;
-  settingsDataLength = 40;
-  settingsResolution = 8;
-  settingsEncryption = 1;
-  settingsFrequency = 245000;
-
   Startup();
 
   /* USER CODE END 2 */
@@ -329,7 +323,7 @@ int main(void)
 			  if (settingsMode == 'T')
 			  {
 				  KeyPacketCounter++;
-				  ReadKeyPacket();
+				  uint8_t RSSI = ReadRSSI();
 			  }
 		  }
 
@@ -971,10 +965,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
@@ -1031,7 +1025,7 @@ void Setup()
 	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
 
 	OLED_clear_screen();
-	HAL_TIM_Base_Start_IT(&htim9);
+//	HAL_TIM_Base_Start_IT(&htim9);
 
 	switch(settingsMode)
 	{
@@ -1194,9 +1188,8 @@ void SendPacket(void)
 void SendPacket8bit(void)
 {
 	uint8_t PacketTotalLength = settingsDataLength + 5;
-	uint8_t PacketType = (settingsEncryption<<4) | settingsResolution;
 
-	uint8_t header[] = {0x10, PacketTotalLength, PacketType, settingsDataLength};
+	uint8_t header[] = {0x10, PacketTotalLength, 0x18, settingsDataLength};
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_Transmit_IT(&hspi2, header, 4);
@@ -1206,11 +1199,9 @@ void SendPacket8bit(void)
 		// Write 40 audio samples to transceiver
 		for (int i=0; i<settingsDataLength; i++)
 		{
-			uint8_t sample[1];
-			returnValue = circular_buf_get(Tx_buffer_handle_t, &sample);
-
 			uint8_t EncryptedSample[1];
-			EncryptedSample[0]= sample[0] ^ Key_Start;
+			returnValue = circular_buf_get(Tx_buffer_handle_t, &EncryptedSample);
+
 			HAL_SPI_Transmit_IT(&hspi2, EncryptedSample, 1);
 		}
 	}
@@ -1225,6 +1216,8 @@ void SendPacket8bit(void)
 			HAL_SPI_Transmit_IT(&hspi2, sample, 1);
 		}
 	}
+
+	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	ADF_set_Tx_mode();
 }
@@ -1270,13 +1263,11 @@ void ReadKeyPacket(void)
 	uint8_t Pkt_dummy;
 	uint8_t Pkt_not_needed;
 	uint8_t Pkt_RSSI;
-	uint8_t Pkt_SQI;
 
-	while (ADF_SPI_READY() == 0);
+	uint8_t bytes[] = {0x30, 0xff};
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 
-	uint8_t bytes[] = {0x30, 0xff};
 	HAL_SPI_Transmit_IT(&hspi2, bytes, 2);
 
 	HAL_SPI_Receive_IT(&hspi2, &Pkt_length, 1);
@@ -1286,8 +1277,6 @@ void ReadKeyPacket(void)
 	HAL_SPI_Receive_IT(&hspi2, &Pkt_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
-
-	while (ADF_SPI_READY() == 0);
 
 	circular_buf_put_overwrite(RSSI_buffer_handle_t, Pkt_RSSI);
 
@@ -1328,6 +1317,39 @@ void WriteACKPacket(void)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
+}
+
+uint8_t ReadRSSI(void)
+{
+	uint8_t RSSI = ADF_SPI_MEM_RD(0x30C);
+	return RSSI;
+}
+
+uint8_t rotateLeft(uint8_t value, uint8_t rotation)
+{
+	uint8_t DROPPED_MSB;
+
+	while (rotation--)
+	{
+		DROPPED_MSB = (value>>7) & 1;
+		value = (value<<1) | DROPPED_MSB;
+	}
+
+	return value;
+}
+
+uint8_t rotateRight(uint8_t value, uint8_t rotation)
+{
+	uint8_t DROPPED_LSB;
+
+	while (rotation--)
+	{
+		DROPPED_LSB = value & 1;
+		value = (value>>1) & (~(1 << 7));
+		value = value | (DROPPED_LSB<<7);
+	}
+
+	return value;
 }
 
 /* USER CODE END 4 */
