@@ -84,6 +84,28 @@ void OLED_print_variable(char command[], uint32_t value, uint8_t x, uint8_t y)
 	SSD1306_Puts(stringValue, &Font_7x10, SSD1306_COLOR_WHITE);
 }
 
+void OLED_print_binary(char command[], uint32_t value, uint8_t x, uint8_t y)
+{
+	char stringValue[10];
+	sprintf(stringValue, "%02X", value);
+	SSD1306_GotoXY(x,y);
+	SSD1306_Puts(command, &Font_7x10, SSD1306_COLOR_WHITE);
+	SSD1306_GotoXY(x+(strlen(command)*7),y);
+	SSD1306_Puts(stringValue, &Font_7x10, SSD1306_COLOR_WHITE);
+}
+
+void OLED_print_talk(void)
+{
+	SSD1306_GotoXY(49,53);
+	SSD1306_Puts("TALK", &Font_7x10, SSD1306_COLOR_BLACK);
+}
+
+void OLED_print_stoptalk(void)
+{
+	SSD1306_GotoXY(49,53);
+	SSD1306_Puts("STOP", &Font_7x10, SSD1306_COLOR_BLACK);
+}
+
 void OLED_clear_screen(void)
 {
 	SSD1306_Fill(SSD1306_COLOR_BLACK);

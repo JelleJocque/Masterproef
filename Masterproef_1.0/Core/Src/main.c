@@ -60,9 +60,9 @@ TIM_HandleTypeDef htim9;
 RTC_TimeTypeDef sTime;
 RTC_DateTypeDef sDate;
 
-/* Settings */
+/* Default Settings */
 char settingsMode = 'R';
-uint8_t settingsVolume = 24;							// Digital value of potentiometer for volume
+uint8_t settingsVolume = 60;							// Digital value of potentiometer for volume
 uint8_t settingsDataLength = 40;						// Number of databytes in audio packet
 uint8_t settingsResolution = 8;							// 8 or 12 (ADC resolution)
 uint8_t settingsEncryption = 1;							// 0 = Encryption off, 1 = Encryption on
@@ -124,6 +124,10 @@ uint32_t Packets_Received;
 uint32_t Packets_Send;
 
 double ALPHA = 0.1;
+
+uint8_t Rx_Pkt_length;
+uint8_t Rx_Pkt_type;
+uint8_t Rx_Data_length;
 
 /* USER CODE END PV */
 
@@ -193,7 +197,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			break;
 
 		case BUTTON_TALK_Pin:
-			if (settingsMode == 'I')
+			if (settingsMode == 'R')
 			{
 				settingsMode = 'T';
 				Setup();
@@ -226,9 +230,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	if (htim->Instance == TIM9)
 	{
-		/* Update Time every 10 seconds */
+		/* Update every 3 seconds */
+		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+		OLED_print_binary("Key: ", Key_Current, 0, 36);
+
 		OLED_print_date_and_time();
-		OLED_print_variable("RSSI mean:", Key_RSSI_Mean, 0, 36);
+
+		if (settingsMode == 'T')
+		{
+			OLED_print_variable("Encryption: ", settingsEncryption, 0, 16);
+			OLED_print_stoptalk();
+		}
+		else if (settingsMode == 'R')
+		{
+			OLED_print_variable("Encrypted? ", (Rx_Pkt_type & 0x10), 0, 16);
+			OLED_print_talk();
+		}
+
 		OLED_update();
 	}
 }
@@ -314,53 +332,28 @@ int main(void)
 		  }
 	  }
 
-	  // Encryption
-	  if (settingsEncryption)
-	  {
-		  if (INT_PACKET_RECEIVED){
-			  INT_PACKET_RECEIVED = 0;
+	  if (INT_PACKET_RECEIVED){
+		  INT_PACKET_RECEIVED = 0;
 
-			  if (settingsMode == 'T')
-			  {
-				  if (!RSSI_counter)
-					  Key_RSSI_Mean = ReadRSSI();
-				  else
-					  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
-				  RSSI_counter++;
-			  }
-		  }
-
-		  if (INT_PACKET_SEND){
-			  INT_PACKET_SEND = 0;
-
-			  if (settingsMode == 'R')
-			  {
-				  // Update RSSI mean value!
-				  // BLOCKING AND TAKING TOO LONG MAYBE!!!
-				  if (!RSSI_counter)
-					  Key_RSSI_Mean = ReadRSSI();
-				  else
-					  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
-				  RSSI_counter++;
-
-				  WriteKeyPacket();
-				  ADF_set_Rx_mode();
-
-				  ReadPacket();
-			  }
+		  if (settingsMode == 'T')
+		  {
+			  if (!RSSI_counter)
+				  Key_RSSI_Mean = ReadRSSI();
+			  else
+				  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
+			  RSSI_counter++;
 		  }
 	  }
-	  else
-	  {
-		  if (INT_PACKET_RECEIVED){
-			INT_PACKET_RECEIVED = 0;
 
-			if (settingsMode == 'R')
-			{
-				Rx_Pkt_counter++;
-				ReadPacket();
-				ADF_set_Rx_mode();
-			}
+	  if (INT_PACKET_SEND){
+		  INT_PACKET_SEND = 0;
+
+		  if (settingsMode == 'R')
+		  {
+			  WriteKeyPacket();
+			  ADF_set_Rx_mode();
+
+			  ReadPacket();
 		  }
 	  }
 
@@ -1004,8 +997,15 @@ void Startup(void)
 
 	HAL_Delay(3000);
 
-	ADF_Init(settingsFrequency);
 	Setup();
+}
+
+void Setup()
+{
+	/* Clear PWR wake up Flag */
+	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
 
 	if (settingsEncryption)
 	{
@@ -1016,84 +1016,65 @@ void Startup(void)
 			WriteKeyPacket();
 		}
 	}
-}
 
-void Setup()
-{
-	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-	/* Clear PWR wake up Flag */
-	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-
-	// Buffer for RSSI values
-	uint16_t RSSI_buffer_size = 1000;
-	uint8_t *RSSI_buffer = malloc(RSSI_buffer_size * sizeof(uint8_t));
-	RSSI_buffer_handle_t = circular_buf_init(RSSI_buffer, RSSI_buffer_size);
-
-	// Buffer for thresholded RSSI values
-	uint16_t Key_RSSI_Threshold_buffer_size = 1000;
-	uint8_t *Key_RSSI_Threshold_buffer = malloc(Key_RSSI_Threshold_buffer_size * sizeof(uint8_t));
-	Key_RSSI_Threshold_buffer_handle_t = circular_buf_init(Key_RSSI_Threshold_buffer, Key_RSSI_Threshold_buffer_size);
-
+	/* OLED settings */
 	OLED_clear_screen();
 	HAL_TIM_Base_Start_IT(&htim9);
 
+	/* potentiometer settings */
+	Potmeter_Init(settingsVolume);
+
 	switch(settingsMode)
 	{
-		case 'I':
-			OLED_print_text("Idle", 0, 0);
-			OLED_update();
-
-			break;
-
 		case 'T':
 			OLED_print_text("Tx", 0, 0);
+			OLED_update();
+
+			/* Reverse HAL audio settings for Rx mode */
+			HAL_DAC_Stop(&hdac, DAC_CHANNEL_1);													// Stop the DAC interface
+			HAL_TIM_Base_Stop_IT(&htim1);														// Stop timer 1 (frequency = 8 kHz)
 
 			/* ADF settings */
+			ADF_Init(settingsFrequency);
 			ADF_set_turnaround_Tx_Rx();
 
-			/* Power savings */
+			/* Power settings */
 			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386 to prevent power consumption
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_SET);							// Enable the analog microphone
 
 			/* Buffer Settings for Tx mode */
 			uint16_t Tx_buffer_size = 400;
 			uint16_t *Tx_buffer = malloc(Tx_buffer_size * sizeof(uint16_t));					// Tx_buffer with size of 400 bytes = 5 packets
 			Tx_buffer_handle_t = circular_buf_init(Tx_buffer, Tx_buffer_size);					// Tx buffer handle type
 
-			/* OLED debug */
-			uint32_t frequency = ADF_RD_Frequency_MHz();
-			OLED_print_variable("Frequency:", frequency, 0, 16);
-			OLED_update();
-
 			/* HAL audio settings for Tx mode */
 			HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_1);											// Start timer 5 (frequency = 16 kHz)
 			HAL_ADC_Start_IT(&hadc1);															// Start ADC interrupt triggered by timer 5
-//			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
 
 			break;
 
 		case 'R':
 			OLED_print_text("Rx", 0, 0);
+			OLED_update();
+
+			/* Reverse HAL audio settings for Tx mode */
+			HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_1);												// Stop timer 5 (frequency = 16 kHz)
+			HAL_ADC_Stop_IT(&hadc1);															// Stop ADC interrupt triggered by timer 5
 
 			/* ADF settings */
+			ADF_Init(settingsFrequency);
 			ADF_set_turnaround_Rx_Tx();
 
-			/* Power savings */
+			/* Power settings */
 			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_SET);								// Enable the LM386
 
 			/* Buffer Settings for Rx mode */
 			uint16_t Rx_buffer_size = 400;
 			uint16_t *Rx_buffer = malloc(Rx_buffer_size * sizeof(uint16_t));					// Rx_buffer with size of 400 bytes = 5 packets
 			Rx_buffer_handle_t = circular_buf_init(Rx_buffer, Rx_buffer_size);					// Rx buffer handle type
 
-			/* OLED debug */
-			frequency = ADF_RD_Frequency_MHz();
-			OLED_print_variable("Frequency:", frequency, 0, 16);
-			OLED_print_variable("Volume:", settingsVolume, 0, 26);
-			OLED_update();
-
 			/* HAL audio settings for Rx mode */
-			Potmeter_Init(settingsVolume);														// Setting the volume with the potentiometer
 			HAL_DAC_Start(&hdac, DAC_CHANNEL_1);												// Start the DAC interface
 			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
 
@@ -1210,10 +1191,11 @@ void SendPacket8bit(void)
 		// Write 40 audio samples to transceiver
 		for (int i=0; i<settingsDataLength; i++)
 		{
-			uint8_t EncryptedSample[1];
-			returnValue = circular_buf_get(Tx_buffer_handle_t, &EncryptedSample);
+			uint8_t encryptedSample[1];
+			returnValue = circular_buf_get(Tx_buffer_handle_t, &encryptedSample);
+			encryptedSample[0] = encryptedSample[0] ^ Key_Current;
 
-			HAL_SPI_Transmit_IT(&hspi2, EncryptedSample, 1);
+			HAL_SPI_Transmit_IT(&hspi2, encryptedSample, 1);
 		}
 	}
 	else
@@ -1235,11 +1217,6 @@ void SendPacket8bit(void)
 
 void ReadPacket(void)
 {
-	uint8_t Rx_Pkt_length;
-	uint8_t Rx_Pkt_type;
-	uint8_t Rx_Data_length;
-	uint8_t Rx_RSSI;
-
 	uint8_t bytes[] = {0x30, 0xff};
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
@@ -1257,10 +1234,31 @@ void ReadPacket(void)
 
 	while (ADF_SPI_READY() == 0);
 
-	// Write packet to buffer
-	for (int i=0; i<Rx_Data_length; i++)
+	// Update RSSI mean value!
+	if (!RSSI_counter)
+	  Key_RSSI_Mean = ReadRSSI();
+	else
+	  Key_RSSI_Mean = (ALPHA*ReadRSSI()) + ((1-ALPHA)*Key_RSSI_Mean);
+	RSSI_counter++;
+
+	if ((Rx_Pkt_type & 0x10) == 0x10)
 	{
-		circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_data[i]);
+		uint8_t decryptedSample;
+
+		// Decryption + Write packet to buffer
+		for (int i=0; i<Rx_Data_length; i++)
+		{
+			decryptedSample = Rx_data[i] ^ Key_Current;
+			circular_buf_put_overwrite(Rx_buffer_handle_t, decryptedSample);
+		}
+	}
+	else
+	{
+		// Write packet to buffer
+		for (int i=0; i<Rx_Data_length; i++)
+		{
+			circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_data[i]);
+		}
 	}
 }
 
