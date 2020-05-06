@@ -180,8 +180,6 @@ uint8_t ADF_SPI_SEND_BYTE(uint8_t byte)
 	bytes[0] = byte;
 	uint8_t status;
 
-	while (ADF_SPI_READY() == 0);
-
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_Transmit(&hspi2, bytes, 1, 50);
 	HAL_SPI_Receive(&hspi2, &status, 1, 50);
@@ -336,4 +334,9 @@ void ADF_set_turnaround_Tx_Rx(void)
 void ADF_set_turnaround_Rx_Tx(void)
 {
 	ADF_SPI_MEM_WR(0x107,0x04);							// Set auto turnaround rx-tx
+}
+
+void ADF_sleep(void)
+{
+	ADF_SPI_MEM_WR(0x317,0x08);							// Sleep BBRAM
 }

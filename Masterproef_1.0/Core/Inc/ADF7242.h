@@ -61,6 +61,8 @@ void ADF_clear_Tx_flag(void);
 void ADF_set_turnaround_Tx_Rx(void);
 void ADF_set_turnaround_Rx_Tx(void);
 
+void ADF_sleep(void);
+
 #ifdef __cplusplus
 }
 #endif
