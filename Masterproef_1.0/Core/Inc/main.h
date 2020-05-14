@@ -1,10 +1,10 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.h
-  * @brief          : Header for main.c file.
-  *                   This file contains the common defines of the application.
-  ******************************************************************************
+  *************************************************************************
+  * @file       : main.h
+  * @brief      : Header for main.c file.
+  *               This file contains the common defines of the application.
+  *************************************************************************
   * @attention
   *
   * <h2><center>&copy; Copyright (c) 2019 STMicroelectronics.
@@ -15,7 +15,7 @@
   * License. You may obtain a copy of the License at:
   *                        opensource.org/licenses/BSD-3-Clause
   *
-  ******************************************************************************
+  *************************************************************************
   */
 /* USER CODE END Header */
 
@@ -63,15 +63,15 @@ void Error_Handler(void);
 #define BUTTON_TALK_Pin GPIO_PIN_1
 #define BUTTON_TALK_GPIO_Port GPIOA
 #define BUTTON_TALK_EXTI_IRQn EXTI1_IRQn
-#define BUTTON_DOWN_Pin GPIO_PIN_3
-#define BUTTON_DOWN_GPIO_Port GPIOA
-#define BUTTON_DOWN_EXTI_IRQn EXTI3_IRQn
+#define BUTTON_UP_Pin GPIO_PIN_3
+#define BUTTON_UP_GPIO_Port GPIOA
+#define BUTTON_UP_EXTI_IRQn EXTI3_IRQn
 #define BUTTON_OK_Pin GPIO_PIN_4
 #define BUTTON_OK_GPIO_Port GPIOA
 #define BUTTON_OK_EXTI_IRQn EXTI4_IRQn
-#define BUTTON_DOWNA6_Pin GPIO_PIN_6
-#define BUTTON_DOWNA6_GPIO_Port GPIOA
-#define BUTTON_DOWNA6_EXTI_IRQn EXTI9_5_IRQn
+#define BUTTON_DOWN_Pin GPIO_PIN_6
+#define BUTTON_DOWN_GPIO_Port GPIOA
+#define BUTTON_DOWN_EXTI_IRQn EXTI9_5_IRQn
 #define POT_MOSI_Pin GPIO_PIN_7
 #define POT_MOSI_GPIO_Port GPIOA
 #define DMIC_CK_Pin GPIO_PIN_0

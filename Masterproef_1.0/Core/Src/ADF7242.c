@@ -84,8 +84,6 @@ void ADF_SPI_MEM_WR(uint16_t reg, uint8_t data)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_Transmit(&hspi2, bytes, 3, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
-
-	while (ADF_SPI_READY() == 0);
 }
 
 uint8_t ADF_SPI_MEM_RD(uint16_t reg)

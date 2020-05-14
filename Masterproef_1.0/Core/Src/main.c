@@ -54,6 +54,7 @@ SPI_HandleTypeDef hspi2;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim9;
+TIM_HandleTypeDef htim11;
 
 /* USER CODE BEGIN PV */
 
@@ -62,12 +63,12 @@ RTC_DateTypeDef sDate;
 
 /* Default Settings */
 char settingsMode = 'R';
-uint8_t settingsVolume = 60;							// Digital value of potentiometer for volume
-uint8_t settingsDataLength = 40;						// Number of databytes in audio packet
-uint8_t settingsResolution = 8;							// 8 or 12 (ADC resolution)
-uint8_t settingsEncryption = 1;							// 0 = Encryption off, 1 = Encryption on
-uint32_t settingsFrequency = 245000;					// Frequency in kHz
-char* settingsWindow = "Home";							// Current window
+uint8_t settingsVolume = 60;					// Potentiometer for volume
+uint8_t settingsDataLength = 40;				// Databytes in audio packet
+uint8_t settingsResolution = 8;					// 8 or 12 (ADC resolution)
+uint8_t settingsEncryption = 1;					// 0 = off, 1 = on
+uint32_t settingsFrequency = 245000;			// Frequency in kHz
+char* settingsWindow = "Home";					// Current window
 
 /* General variables */
 uint8_t returnValue;
@@ -95,19 +96,6 @@ uint32_t Tx_test_teller;
 // Rx variables
 cbuf_handle_t Rx_buffer_handle_t;
 uint8_t RX_BUFFER_BASE;
-uint32_t DAC_teller = 0;
-uint32_t Rx_teller = 0;
-uint8_t Rx_resolution;
-uint32_t Rx_Pkt_counter = 0;
-uint8_t Rx_Pkt_length;
-uint8_t Rx_byte1;
-uint8_t Rx_byte2;
-uint8_t Rx_byte3;
-uint8_t Rx_byteCounter;
-uint16_t Rx_sample1;
-uint16_t Rx_sample2;
-uint8_t Rx_RSSI;
-uint8_t Rx_SQI;
 
 /* Encryption variables */
 cbuf_handle_t RSSI_buffer_handle_t;
@@ -120,6 +108,7 @@ uint8_t Key_Current;
 uint8_t Key_New;
 uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
+uint8_t Key_bit_chosen;
 
 uint32_t Packets_Received;
 uint32_t Packets_Send;
@@ -129,6 +118,12 @@ double ALPHA = 0.1;
 uint8_t Rx_Pkt_length;
 uint8_t Rx_Pkt_type;
 uint8_t Rx_Data_length;
+uint8_t Rx_RSSI;
+uint8_t Rx_Key_bit_chosen;
+
+static volatile TALK_state = 1;
+
+static volatile state = 1;
 
 /* USER CODE END PV */
 
@@ -145,6 +140,7 @@ static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM9_Init(void);
 static void MX_RTC_Init(void);
+static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
 void HAL_GPIO_EXTI_Callback(uint16_t);
@@ -198,10 +194,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			break;
 
 		case BUTTON_TALK_Pin:
-			if (settingsMode == 'R')
+			if (TALK_state)
 			{
-				settingsMode = 'T';
-				Setup();
+				TALK_state = 0;
+				HAL_TIM_Base_Start_IT(&htim11);
 			}
 
 			break;
@@ -211,9 +207,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			HAL_Delay(250);
 
 			ADF_sleep();
-			OLED_shutdown();																	// Shutdown OLED display
-			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386
-			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone
+			OLED_shutdown();												// Shutdown OLED display
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);			// Shutdown LM386
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);		// Shutdown the analog microphone
 
 			HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
 			HAL_PWR_EnterSTANDBYMode();
@@ -228,6 +224,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if (htim->Instance == TIM1)
 	{
 		Play_Audio();
+	}
+
+	if (htim->Instance == TIM11)
+	{
+		if (HAL_GPIO_ReadPin(BUTTON_TALK_GPIO_Port, BUTTON_TALK_Pin))
+		{
+			TALK_state = 1;
+
+			if (settingsMode == 'R')
+			{
+				settingsMode = 'T';
+			}
+			else if (settingsMode == 'T')
+			{
+				settingsMode = 'R';
+			}
+			HAL_TIM_Base_Stop_IT(&htim11);
+
+			Setup();
+		}
 	}
 
 	if (htim->Instance == TIM9)
@@ -313,6 +329,7 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM9_Init();
   MX_RTC_Init();
+  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 
   Startup();
@@ -355,8 +372,7 @@ int main(void)
 					  {
 						  Key_New = Key_New<<Key_bits || 0;
 						  Key_bits++;
-						  WriteACKPacket();
-						  ADF_set_Tx_mode();
+						  Key_bit_chosen = 1;
 					  }
 				  }
 				  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
@@ -365,8 +381,7 @@ int main(void)
 					  {
 						  Key_New = Key_New<<Key_bits || 1;
 						  Key_bits++;
-						  WriteACKPacket();
-						  ADF_set_Tx_mode();
+						  Key_bit_chosen = 1;
 					  }
 				  }
 			  }
@@ -860,7 +875,7 @@ static void MX_TIM9_Init(void)
   htim9.Instance = TIM9;
   htim9.Init.Prescaler = 48000;
   htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 6000;
+  htim9.Init.Period = 2000;
   htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
@@ -875,6 +890,37 @@ static void MX_TIM9_Init(void)
   /* USER CODE BEGIN TIM9_Init 2 */
 
   /* USER CODE END TIM9_Init 2 */
+
+}
+
+/**
+  * @brief TIM11 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM11_Init(void)
+{
+
+  /* USER CODE BEGIN TIM11_Init 0 */
+
+  /* USER CODE END TIM11_Init 0 */
+
+  /* USER CODE BEGIN TIM11_Init 1 */
+
+  /* USER CODE END TIM11_Init 1 */
+  htim11.Instance = TIM11;
+  htim11.Init.Prescaler = 48000;
+  htim11.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim11.Init.Period = 500;
+  htim11.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim11.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim11) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM11_Init 2 */
+
+  /* USER CODE END TIM11_Init 2 */
 
 }
 
@@ -901,13 +947,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : BUTTON_TALK_Pin */
   GPIO_InitStruct.Pin = BUTTON_TALK_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BUTTON_TALK_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : BUTTON_DOWN_Pin BUTTON_OK_Pin BUTTON_DOWNA6_Pin ADF7242_IRQ1_Pin 
+  /*Configure GPIO pins : BUTTON_UP_Pin BUTTON_OK_Pin BUTTON_DOWN_Pin ADF7242_IRQ1_Pin 
                            ADF7242_IRQ2_Pin */
-  GPIO_InitStruct.Pin = BUTTON_DOWN_Pin|BUTTON_OK_Pin|BUTTON_DOWNA6_Pin|ADF7242_IRQ1_Pin 
+  GPIO_InitStruct.Pin = BUTTON_UP_Pin|BUTTON_OK_Pin|BUTTON_DOWN_Pin|ADF7242_IRQ1_Pin 
                           |ADF7242_IRQ2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -939,7 +985,7 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
@@ -953,13 +999,22 @@ void Startup(void)
 	OLED_print_text("Walkie Talkie", 18, 26);
 	OLED_update();
 
-	HAL_Delay(3000);
+	HAL_Delay(1000);
+
+	/* OLED settings */
+	OLED_clear_screen();
+	HAL_TIM_Base_Start_IT(&htim9);
+
+	/* potentiometer settings */
+	Potmeter_Init(settingsVolume);
 
 	Setup();
 }
 
 void Setup()
 {
+	OLED_clear_screen();
+
 	/* Clear PWR wake up Flag */
 	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
 	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
@@ -974,13 +1029,6 @@ void Setup()
 			WriteKeyPacket();
 		}
 	}
-
-	/* OLED settings */
-	OLED_clear_screen();
-	HAL_TIM_Base_Start_IT(&htim9);
-
-	/* potentiometer settings */
-	Potmeter_Init(settingsVolume);
 
 	switch(settingsMode)
 	{
@@ -1069,7 +1117,6 @@ void Play_Audio(void)
 			returnValue = circular_buf_get(Rx_buffer_handle_t, &sample);
 			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sample);
 		}
-		DAC_teller++;
 	}
 }
 
@@ -1168,6 +1215,9 @@ void SendPacket8bit(void)
 		}
 	}
 
+	HAL_SPI_Transmit_IT(&hspi2, &Key_bit_chosen, 1);
+	Key_bit_chosen = 0;
+
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	ADF_set_Tx_mode();
@@ -1188,7 +1238,8 @@ void ReadPacket(void)
 	uint8_t Rx_data[Rx_Data_length];
 	HAL_SPI_Receive_IT(&hspi2, &Rx_data, Rx_Data_length);
 
-	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Key_bit_chosen, 1);
+
 	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
@@ -1203,7 +1254,7 @@ void ReadPacket(void)
 
 	RSSI_counter++;
 
-	if ((Rx_Pkt_type == 0x18) || (Rx_Pkt_type == 0x1c))
+	if ((Rx_Pkt_type == 0x18) || (Rx_Pkt_type == 0x1c))			// Audio packet
 	{
 		uint8_t decryptedSample;
 
@@ -1214,23 +1265,33 @@ void ReadPacket(void)
 			circular_buf_put_overwrite(Rx_buffer_handle_t, decryptedSample);
 		}
 	}
-	else if ((Rx_Pkt_type == 0x11))
-	{
-		if (Rx_RSSI < Key_RSSI_Mean)
-		{
-			Key_bits++;
-		}
-		else if (Rx_RSSI > Key_RSSI_Threshold)
-		{
-			Key_bits++;
-		}
-	}
 	else
 	{
 		// Write packet to buffer
 		for (int i=0; i<Rx_Data_length; i++)
 		{
 			circular_buf_put_overwrite(Rx_buffer_handle_t, Rx_data[i]);
+		}
+	}
+
+	if (Rx_Key_bit_chosen)
+	{
+		Rx_Key_bit_chosen = 0;
+		if (Rx_RSSI < Key_RSSI_Mean)
+		{
+			if (Key_bits<8)
+			{
+				Key_New = Key_New<<Key_bits || 0;
+				Key_bits++;
+			}
+		}
+		else if (Rx_RSSI > Key_RSSI_Threshold)
+		{
+			if (Key_bits<8)
+			{
+				Key_New = Key_New<<Key_bits || 0;
+				Key_bits++;
+			}
 		}
 	}
 }
