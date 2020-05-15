@@ -1301,7 +1301,7 @@ void WriteKeyPacket(void)
 	while (ADF_SPI_READY() == 0);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	uint8_t bytes[] = {0x10, 0x05, 0x10};									// TYPE = 0x10 => Key packet
+	uint8_t bytes[] = {0x10, 0x05, 0x10, 0xff};									// TYPE = 0x10 => Key packet
 	HAL_SPI_Transmit_IT(&hspi2, bytes, 4);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
