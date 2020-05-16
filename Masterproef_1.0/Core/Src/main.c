@@ -1003,7 +1003,7 @@ void Startup(void)
 
 	/* OLED settings */
 	OLED_clear_screen();
-	HAL_TIM_Base_Start_IT(&htim9);
+//	HAL_TIM_Base_Start_IT(&htim9);
 
 	/* potentiometer settings */
 	Potmeter_Init(settingsVolume);
