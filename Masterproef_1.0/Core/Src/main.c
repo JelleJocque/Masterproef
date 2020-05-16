@@ -105,7 +105,8 @@ uint32_t RSSI_counter;
 uint16_t Key_RSSI_Mean;
 uint8_t Key_Start = 0b10101010;
 uint8_t Key_Current;
-uint8_t Key_New;
+uint32_t Key_New = 0x00000000;
+uint32_t Key_Old = 0x00000000;
 uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
 uint8_t Key_bit_chosen;
@@ -168,6 +169,8 @@ void WriteACKPacket(void);
 uint8_t ReadRSSI(void);
 uint8_t rotateLeft(uint8_t, uint8_t);
 uint8_t rotateRight(uint8_t, uint8_t);
+
+void OLED_UPDATE(void);
 
 /* USER CODE END PFP */
 
@@ -357,6 +360,12 @@ int main(void)
 
 		  if (settingsMode == 'T')
 		  {
+			  //debug
+			  if (Key_bits == 8)
+			  {
+				  OLED_UPDATE();
+			  }
+
 			  uint8_t RSSI = ReadRSSI();
 			  if (!RSSI_counter)
 				  Key_RSSI_Mean = RSSI;
@@ -370,7 +379,7 @@ int main(void)
 				  {
 					  if (Key_bits<8)
 					  {
-						  Key_New = Key_New<<Key_bits || 0;
+						  Key_New = (Key_New<<1) | 0;
 						  Key_bits++;
 						  Key_bit_chosen = 1;
 					  }
@@ -379,7 +388,7 @@ int main(void)
 				  {
 					  if (Key_bits<8)
 					  {
-						  Key_New = Key_New<<Key_bits || 1;
+						  Key_New = (Key_New<<1) | 1;
 						  Key_bits++;
 						  Key_bit_chosen = 1;
 					  }
@@ -1216,7 +1225,9 @@ void SendPacket8bit(void)
 	}
 
 	HAL_SPI_Transmit_IT(&hspi2, &Key_bit_chosen, 1);
-	Key_bit_chosen = 0;
+
+	if (Key_bit_chosen == 1)
+		Key_bit_chosen = 0;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1274,22 +1285,28 @@ void ReadPacket(void)
 		}
 	}
 
+	//debug
+	if (Key_bits == 8)
+	{
+	  OLED_UPDATE();
+	}
+
 	if (Rx_Key_bit_chosen)
 	{
 		Rx_Key_bit_chosen = 0;
-		if (Rx_RSSI < Key_RSSI_Mean)
+		if (Rx_RSSI <= Key_RSSI_Mean)
 		{
-			if (Key_bits<8)
+			if (Key_bits < 8)
 			{
-				Key_New = Key_New<<Key_bits || 0;
+				Key_New = (Key_New<<1) | 0;
 				Key_bits++;
 			}
 		}
-		else if (Rx_RSSI > Key_RSSI_Threshold)
+		else if (Rx_RSSI > Key_RSSI_Mean)
 		{
-			if (Key_bits<8)
+			if (Key_bits < 8)
 			{
-				Key_New = Key_New<<Key_bits || 0;
+				Key_New = (Key_New<<1) | 1;
 				Key_bits++;
 			}
 		}
@@ -1318,6 +1335,28 @@ void WriteACKPacket(void)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
+}
+
+void OLED_UPDATE(void)
+{
+	OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+	OLED_print_variable("Key bits:", Key_bits, 0, 36);
+	OLED_print_binary("Key:", Key_New, 80, 36);
+
+	OLED_print_date_and_time();
+
+	if (settingsMode == 'T')
+	{
+		OLED_print_variable("Encryption: ", settingsEncryption, 0, 16);
+		OLED_print_stoptalk();
+	}
+	else if (settingsMode == 'R')
+	{
+		OLED_print_variable("Encrypted? ", (Rx_Pkt_type>>4 & 0x01), 0, 16);
+		OLED_print_talk();
+	}
+
+	OLED_update();
 }
 
 uint8_t ReadRSSI(void)
