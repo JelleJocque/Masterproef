@@ -103,9 +103,9 @@ cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
 
 uint32_t RSSI_counter;
 uint16_t Key_RSSI_Mean;
-uint16_t Key_Start = 0xAAAA;
+uint8_t Key_Start = 0xAA;
 uint8_t Key_Current;
-uint32_t Key_New;
+uint8_t Key_New;
 uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
 uint8_t Key_bit_chosen;
@@ -359,10 +359,12 @@ int main(void)
 
 		  if (settingsMode == 'T')
 		  {
-			  //debug
-			  if (Key_bits == 16)
+			  if (Key_bits != 0 && Key_bits % 8 == 0)
 			  {
 				  OLED_UPDATE();
+				  Key_Current = Key_New;
+				  Key_New = 0;
+				  Key_bits = 0;
 			  }
 
 			  uint8_t RSSI = ReadRSSI();
@@ -376,7 +378,7 @@ int main(void)
 			  {
 				  if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
 				  {
-					  if (Key_bits<16)
+					  if (Key_bits<8)
 					  {
 						  Key_New = (Key_New<<1) | 0;
 						  Key_bits++;
@@ -385,7 +387,7 @@ int main(void)
 				  }
 				  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
 				  {
-					  if (Key_bits<16)
+					  if (Key_bits<8)
 					  {
 						  Key_New = (Key_New<<1) | 1;
 						  Key_bits++;
@@ -1285,9 +1287,12 @@ void ReadPacket(void)
 	}
 
 	//debug
-	if (Key_bits == 16)
+	if (Key_bits != 0 && Key_bits % 8 == 0)
 	{
 	  OLED_UPDATE();
+	  Key_Current = Key_New;
+	  Key_New = 0;
+	  Key_bits = 0;
 	}
 
 	if (Rx_Key_bit_chosen)
@@ -1295,7 +1300,7 @@ void ReadPacket(void)
 		Rx_Key_bit_chosen = 0;
 		if (Rx_RSSI <= Key_RSSI_Mean)
 		{
-			if (Key_bits < 16)
+			if (Key_bits < 8)
 			{
 				Key_New = (Key_New<<1) | 0;
 				Key_bits++;
@@ -1303,7 +1308,7 @@ void ReadPacket(void)
 		}
 		else if (Rx_RSSI > Key_RSSI_Mean)
 		{
-			if (Key_bits < 16)
+			if (Key_bits < 8)
 			{
 				Key_New = (Key_New<<1) | 1;
 				Key_bits++;
