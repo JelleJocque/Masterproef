@@ -108,7 +108,7 @@ uint8_t Key_Current;
 uint8_t Key_New;
 uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
-uint8_t Key_bit_chosen;
+uint8_t Encryption_byte;
 
 uint32_t Packets_Received;
 uint32_t Packets_Send;
@@ -119,11 +119,11 @@ uint8_t Rx_Pkt_length;
 uint8_t Rx_Pkt_type;
 uint8_t Rx_Data_length;
 uint8_t Rx_RSSI;
-uint8_t Rx_Key_bit_chosen;
+uint8_t Rx_Encryption_byte;
 
 static volatile TALK_state = 1;
-
-static volatile state = 1;
+static volatile UP_state = 1;
+static volatile DOWN_state = 1;
 
 /* USER CODE END PV */
 
@@ -171,6 +171,9 @@ uint8_t rotateRight(uint8_t, uint8_t);
 
 void OLED_UPDATE(void);
 
+void Hammming_send(uint8_t);
+void Hammming_check(uint8_t);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -204,6 +207,24 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 			break;
 
+		case BUTTON_UP_Pin:
+			if (UP_state)
+			{
+				UP_state = 0;
+				HAL_TIM_Base_Start_IT(&htim11);
+			}
+
+			break;
+
+		case BUTTON_DOWN_Pin:
+			if (DOWN_state)
+			{
+				DOWN_state = 0;
+				HAL_TIM_Base_Start_IT(&htim11);
+			}
+
+			break;
+
 		case BUTTON_PWR_Pin:
 			while (HAL_GPIO_ReadPin(BUTTON_PWR_GPIO_Port, BUTTON_PWR_Pin));
 			HAL_Delay(250);
@@ -223,11 +244,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* Callback timers */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+	// Play audio samples on DAC
 	if (htim->Instance == TIM1)
 	{
 		Play_Audio();
 	}
 
+	// Timer debouncing for external interrupts
 	if (htim->Instance == TIM11)
 	{
 		if (HAL_GPIO_ReadPin(BUTTON_TALK_GPIO_Port, BUTTON_TALK_Pin))
@@ -246,8 +269,53 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 			Setup();
 		}
+
+		if (HAL_GPIO_ReadPin(BUTTON_UP_GPIO_Port, BUTTON_UP_Pin))
+		{
+			UP_state = 1;
+
+			if (settingsMode == 'R')
+			{
+				if (settingsVolume < 70)
+				{
+					settingsVolume = settingsVolume + 10;
+					Potmeter_Init(settingsVolume);
+					OLED_print_volume(settingsVolume);
+					OLED_update();
+				}
+				else
+				{
+					OLED_print_volume(settingsVolume);
+					OLED_update();
+				}
+			}
+			HAL_TIM_Base_Stop_IT(&htim11);
+		}
+
+		if (HAL_GPIO_ReadPin(BUTTON_DOWN_GPIO_Port, BUTTON_DOWN_Pin))
+		{
+			DOWN_state = 1;
+
+			if (settingsMode == 'R')
+			{
+				if (settingsVolume > 0)
+				{
+					settingsVolume = settingsVolume - 10;
+					Potmeter_Init(settingsVolume);
+					OLED_print_volume(settingsVolume);
+					OLED_update();
+				}
+				else
+				{
+					OLED_print_volume(settingsVolume);
+					OLED_update();
+				}
+			}
+			HAL_TIM_Base_Stop_IT(&htim11);
+		}
 	}
 
+	// Update OLED display
 	if (htim->Instance == TIM9)
 	{
 		/* Update every 3 seconds */
@@ -359,14 +427,6 @@ int main(void)
 
 		  if (settingsMode == 'T')
 		  {
-			  if (Key_bits != 0 && Key_bits % 8 == 0)
-			  {
-				  OLED_UPDATE();
-				  Key_Current = Key_New;
-				  Key_New = 0;
-				  Key_bits = 0;
-			  }
-
 			  uint8_t RSSI = ReadRSSI();
 			  if (!RSSI_counter)
 				  Key_RSSI_Mean = RSSI;
@@ -374,24 +434,36 @@ int main(void)
 				  Key_RSSI_Mean = (ALPHA*RSSI) + ((1-ALPHA)*Key_RSSI_Mean);
 			  RSSI_counter++;
 
-			  if (RSSI_counter > 10)
+			  if (Key_bits != 0 && Key_bits % 8 == 0)
 			  {
-				  if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
+				  OLED_UPDATE();
+				  Hamming_send(Key_New);
+				  Key_Current = Key_New;
+				  Key_New = 0;
+				  Key_bits = 0;
+				  RSSI_counter = 0;
+			  }
+			  else
+			  {
+				  if (RSSI_counter > 10)
 				  {
-					  if (Key_bits<8)
+					  if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
 					  {
-						  Key_New = (Key_New<<1) | 0;
-						  Key_bits++;
-						  Key_bit_chosen = 1;
+						  if (Key_bits<8)
+						  {
+							  Key_New = (Key_New<<1) | 0;
+							  Key_bits++;
+							  Encryption_byte = 0x01;
+						  }
 					  }
-				  }
-				  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
-				  {
-					  if (Key_bits<8)
+					  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
 					  {
-						  Key_New = (Key_New<<1) | 1;
-						  Key_bits++;
-						  Key_bit_chosen = 1;
+						  if (Key_bits<8)
+						  {
+							  Key_New = (Key_New<<1) | 1;
+							  Key_bits++;
+							  Encryption_byte = 0x01;
+						  }
 					  }
 				  }
 			  }
@@ -1004,31 +1076,35 @@ static void MX_GPIO_Init(void)
 
 void Startup(void)
 {
+	/* Clear PWR wake up Flag */
+	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+
+	/* Welcome screen */
 	OLED_init();
 	OLED_print_text("Jelle's", 39, 16);
 	OLED_print_text("Walkie Talkie", 18, 26);
 	OLED_update();
-
 	HAL_Delay(1000);
 
 	/* OLED settings */
 	OLED_clear_screen();
 //	HAL_TIM_Base_Start_IT(&htim9);
 
-	/* potentiometer settings */
-	Potmeter_Init(settingsVolume);
-
+	/* Setup */
 	Setup();
 }
 
 void Setup()
 {
-	OLED_clear_screen();
+	/* RTC time */
+	OLED_print_date_and_time();
 
-	/* Clear PWR wake up Flag */
-	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+	/* potentiometer settings */
+	Potmeter_Init(settingsVolume);
+	OLED_print_volume(settingsVolume);
+	OLED_update();
 
 	if (settingsEncryption)
 	{
@@ -1039,6 +1115,8 @@ void Setup()
 			WriteKeyPacket();
 		}
 	}
+
+	ADF_Init(settingsFrequency);
 
 	switch(settingsMode)
 	{
@@ -1051,7 +1129,6 @@ void Setup()
 			HAL_TIM_Base_Stop_IT(&htim1);														// Stop timer 1 (frequency = 8 kHz)
 
 			/* ADF settings */
-			ADF_Init(settingsFrequency);
 			ADF_set_turnaround_Tx_Rx();
 
 			/* Power settings */
@@ -1078,7 +1155,6 @@ void Setup()
 			HAL_ADC_Stop_IT(&hadc1);															// Stop ADC interrupt triggered by timer 5
 
 			/* ADF settings */
-			ADF_Init(settingsFrequency);
 			ADF_set_turnaround_Rx_Tx();
 
 			/* Power settings */
@@ -1225,10 +1301,8 @@ void SendPacket8bit(void)
 		}
 	}
 
-	HAL_SPI_Transmit_IT(&hspi2, &Key_bit_chosen, 1);
-
-	if (Key_bit_chosen == 1)
-		Key_bit_chosen = 0;
+	HAL_SPI_Transmit_IT(&hspi2, &Encryption_byte, 1);
+	Encryption_byte = 0;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1250,7 +1324,7 @@ void ReadPacket(void)
 	uint8_t Rx_data[Rx_Data_length];
 	HAL_SPI_Receive_IT(&hspi2, &Rx_data, Rx_Data_length);
 
-	HAL_SPI_Receive_IT(&hspi2, &Rx_Key_bit_chosen, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_Encryption_byte, 1);
 
 	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
 
@@ -1286,18 +1360,10 @@ void ReadPacket(void)
 		}
 	}
 
-	//debug
-	if (Key_bits != 0 && Key_bits % 8 == 0)
+	// Key bit chosen by transmitter
+	if (Rx_Encryption_byte == 1)
 	{
-	  OLED_UPDATE();
-	  Key_Current = Key_New;
-	  Key_New = 0;
-	  Key_bits = 0;
-	}
-
-	if (Rx_Key_bit_chosen)
-	{
-		Rx_Key_bit_chosen = 0;
+		Rx_Encryption_byte = 0;
 		if (Rx_RSSI <= Key_RSSI_Mean)
 		{
 			if (Key_bits < 8)
@@ -1314,6 +1380,21 @@ void ReadPacket(void)
 				Key_bits++;
 			}
 		}
+	}
+	// Hamming packet send by transmitter
+	else if (Rx_Encryption_byte >= 240)
+	{
+		Rx_Encryption_byte = 0;
+		Hamming_check(Key_New, (Rx_Encryption_byte & 0x0F));
+	}
+
+	//debug
+	if (Key_bits != 0 && Key_bits % 8 == 0)
+	{
+	  OLED_UPDATE();
+	  Key_Current = Key_New;
+	  Key_New = 0;
+	  Key_bits = 0;
 	}
 }
 
@@ -1369,32 +1450,112 @@ uint8_t ReadRSSI(void)
 	return RSSI;
 }
 
-uint8_t rotateLeft(uint8_t value, uint8_t rotation)
+void Hamming_send(uint8_t key)
 {
-	uint8_t DROPPED_MSB;
+	uint8_t bit_0 = key & 0x01;
+	uint8_t bit_1 = (key>>1) & 0x01;
+	uint8_t bit_2 = (key>>2) & 0x01;
+	uint8_t bit_3 = (key>>3) & 0x01;
+	uint8_t bit_4 = (key>>4) & 0x01;
+	uint8_t bit_5 = (key>>5) & 0x01;
+	uint8_t bit_6 = (key>>6) & 0x01;
+	uint8_t bit_7 = (key>>7) & 0x01;
 
-	while (rotation--)
-	{
-		DROPPED_MSB = (value>>7) & 1;
-		value = (value<<1) | DROPPED_MSB;
-	}
+	uint8_t parity_0 = bit_0 ^ bit_1 ^ bit_3 ^ bit_4 ^ bit_6;
+	uint8_t parity_1 = bit_0 ^ bit_2 ^ bit_3 ^ bit_5 ^ bit_6;
+	uint8_t parity_2 = bit_1 ^ bit_2 ^ bit_3 ^ bit_7;
+	uint8_t parity_3 = bit_4 ^ bit_5 ^ bit_6 ^ bit_7;
 
-	return value;
+	uint8_t code = (parity_3 * 8) + (parity_2 * 4) + (parity_1 * 2) + parity_0;
+
+	Encryption_byte = 0xF0 | code;
 }
 
-uint8_t rotateRight(uint8_t value, uint8_t rotation)
+void Hamming_check(uint8_t key, uint8_t Tx_code)
 {
-	uint8_t DROPPED_LSB;
+	uint8_t bit_0 = key & 0x01;
+	uint8_t bit_1 = (key>>1) & 0x01;
+	uint8_t bit_2 = (key>>2) & 0x01;
+	uint8_t bit_3 = (key>>3) & 0x01;
+	uint8_t bit_4 = (key>>4) & 0x01;
+	uint8_t bit_5 = (key>>5) & 0x01;
+	uint8_t bit_6 = (key>>6) & 0x01;
+	uint8_t bit_7 = (key>>7) & 0x01;
 
-	while (rotation--)
+	uint8_t parity_0 = bit_0 ^ bit_1 ^ bit_3 ^ bit_4 ^ bit_6;
+	uint8_t parity_1 = bit_0 ^ bit_2 ^ bit_3 ^ bit_5 ^ bit_6;
+	uint8_t parity_2 = bit_1 ^ bit_2 ^ bit_3 ^ bit_7;
+	uint8_t parity_3 = bit_4 ^ bit_5 ^ bit_6 ^ bit_7;
+
+	uint8_t Rx_code = (parity_3 * 8) + (parity_2 * 4) + (parity_1 * 2) + parity_0;
+
+	if (Rx_code != Tx_code)
 	{
-		DROPPED_LSB = value & 1;
-		value = (value>>1) & (~(1 << 7));
-		value = value | (DROPPED_LSB<<7);
-	}
+		uint8_t control_0 = 0;
+		uint8_t control_1 = 0;
+		uint8_t control_2 = 0;
+		uint8_t control_3 = 0;
 
-	return value;
+		if (parity_0 != (Tx_code & 0x01))
+			control_0 = 1;
+		else if (parity_1 != ((Tx_code>>1) & 0x01))
+			control_1 = 1;
+		else if (parity_2 != ((Tx_code>>2) & 0x01))
+			control_2 = 1;
+		else if (parity_3 != ((Tx_code>>3) & 0x01))
+			control_3 = 1;
+
+		uint8_t control = (control_3 * 8) + (control_2 * 4) + (control_1 * 2) + control_0;
+
+		// Key correction
+		switch(control)
+		{
+			case 3:
+				Key_New ^= 1UL << 0;
+			case 5:
+				Key_New ^= 1UL << 1;
+			case 6:
+				Key_New ^= 1UL << 2;
+			case 7:
+				Key_New ^= 1UL << 3;
+			case 9:
+				Key_New ^= 1UL << 4;
+			case 10:
+				Key_New ^= 1UL << 5;
+			case 11:
+				Key_New ^= 1UL << 6;
+			case 12:
+				Key_New ^= 1UL << 7;
+		}
+	}
 }
+
+//uint8_t rotateLeft(uint8_t value, uint8_t rotation)
+//{
+//	uint8_t DROPPED_MSB;
+//
+//	while (rotation--)
+//	{
+//		DROPPED_MSB = (value>>7) & 1;
+//		value = (value<<1) | DROPPED_MSB;
+//	}
+//
+//	return value;
+//}
+//
+//uint8_t rotateRight(uint8_t value, uint8_t rotation)
+//{
+//	uint8_t DROPPED_LSB;
+//
+//	while (rotation--)
+//	{
+//		DROPPED_LSB = value & 1;
+//		value = (value>>1) & (~(1 << 7));
+//		value = value | (DROPPED_LSB<<7);
+//	}
+//
+//	return value;
+//}
 
 /* USER CODE END 4 */
 

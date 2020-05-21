@@ -40,6 +40,7 @@ void OLED_print_variable(char[], uint32_t, uint8_t, uint8_t);
 void OLED_print_binary(char[], uint32_t, uint8_t, uint8_t);
 void OLED_print_talk(void);
 void OLED_print_stoptalk(void);
+void OLED_print_volume(uint8_t);
 void OLED_clear_screen(void);
 void OLED_update(void);
 void OLED_shutdown(void);
