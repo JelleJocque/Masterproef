@@ -166,13 +166,9 @@ void WriteKeyPacket(void);
 void ReadKeyPacket(void);
 void WriteACKPacket(void);
 uint8_t ReadRSSI(void);
-uint8_t rotateLeft(uint8_t, uint8_t);
-uint8_t rotateRight(uint8_t, uint8_t);
 
-void OLED_UPDATE(void);
-
-void Hammming_send(uint8_t);
-void Hammming_check(uint8_t);
+void Hamming_send(uint8_t);
+void Hamming_check(uint8_t);
 
 /* USER CODE END PFP */
 
@@ -436,7 +432,7 @@ int main(void)
 
 			  if (Key_bits != 0 && Key_bits % 8 == 0)
 			  {
-				  OLED_UPDATE();
+//				  OLED_UPDATE();
 				  Hamming_send(Key_New);
 				  Key_Current = Key_New;
 				  Key_New = 0;
@@ -1122,6 +1118,7 @@ void Setup()
 	{
 		case 'T':
 			OLED_print_text("Tx", 0, 0);
+			OLED_print_stoptalk();
 			OLED_update();
 
 			/* Reverse HAL audio settings for Rx mode */
@@ -1148,6 +1145,7 @@ void Setup()
 
 		case 'R':
 			OLED_print_text("Rx", 0, 0);
+			OLED_print_talk();
 			OLED_update();
 
 			/* Reverse HAL audio settings for Tx mode */
@@ -1384,18 +1382,18 @@ void ReadPacket(void)
 	// Hamming packet send by transmitter
 	else if (Rx_Encryption_byte >= 240)
 	{
+		Hamming_check(Rx_Encryption_byte & 0x0F);
 		Rx_Encryption_byte = 0;
-		Hamming_check(Key_New, (Rx_Encryption_byte & 0x0F));
 	}
 
 	//debug
-	if (Key_bits != 0 && Key_bits % 8 == 0)
-	{
-	  OLED_UPDATE();
-	  Key_Current = Key_New;
-	  Key_New = 0;
-	  Key_bits = 0;
-	}
+//	if (Key_bits != 0 && Key_bits % 8 == 0)
+//	{
+//	  OLED_UPDATE();
+//	  Key_Current = Key_New;
+//	  Key_New = 0;
+//	  Key_bits = 0;
+//	}
 }
 
 void WriteKeyPacket(void)
@@ -1420,28 +1418,6 @@ void WriteACKPacket(void)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
-}
-
-void OLED_UPDATE(void)
-{
-	OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
-	OLED_print_variable("Bits:", Key_bits, 0, 36);
-	OLED_print_binary("Key:", Key_New, 60, 36);
-
-	OLED_print_date_and_time();
-
-	if (settingsMode == 'T')
-	{
-		OLED_print_variable("Encryption: ", settingsEncryption, 0, 16);
-		OLED_print_stoptalk();
-	}
-	else if (settingsMode == 'R')
-	{
-		OLED_print_variable("Encrypted? ", (Rx_Pkt_type>>4 & 0x01), 0, 16);
-		OLED_print_talk();
-	}
-
-	OLED_update();
 }
 
 uint8_t ReadRSSI(void)
@@ -1471,16 +1447,16 @@ void Hamming_send(uint8_t key)
 	Encryption_byte = 0xF0 | code;
 }
 
-void Hamming_check(uint8_t key, uint8_t Tx_code)
+void Hamming_check(uint8_t Tx_code)
 {
-	uint8_t bit_0 = key & 0x01;
-	uint8_t bit_1 = (key>>1) & 0x01;
-	uint8_t bit_2 = (key>>2) & 0x01;
-	uint8_t bit_3 = (key>>3) & 0x01;
-	uint8_t bit_4 = (key>>4) & 0x01;
-	uint8_t bit_5 = (key>>5) & 0x01;
-	uint8_t bit_6 = (key>>6) & 0x01;
-	uint8_t bit_7 = (key>>7) & 0x01;
+	uint8_t bit_0 = Key_New & 0x01;
+	uint8_t bit_1 = (Key_New>>1) & 0x01;
+	uint8_t bit_2 = (Key_New>>2) & 0x01;
+	uint8_t bit_3 = (Key_New>>3) & 0x01;
+	uint8_t bit_4 = (Key_New>>4) & 0x01;
+	uint8_t bit_5 = (Key_New>>5) & 0x01;
+	uint8_t bit_6 = (Key_New>>6) & 0x01;
+	uint8_t bit_7 = (Key_New>>7) & 0x01;
 
 	uint8_t parity_0 = bit_0 ^ bit_1 ^ bit_3 ^ bit_4 ^ bit_6;
 	uint8_t parity_1 = bit_0 ^ bit_2 ^ bit_3 ^ bit_5 ^ bit_6;
@@ -1529,33 +1505,6 @@ void Hamming_check(uint8_t key, uint8_t Tx_code)
 		}
 	}
 }
-
-//uint8_t rotateLeft(uint8_t value, uint8_t rotation)
-//{
-//	uint8_t DROPPED_MSB;
-//
-//	while (rotation--)
-//	{
-//		DROPPED_MSB = (value>>7) & 1;
-//		value = (value<<1) | DROPPED_MSB;
-//	}
-//
-//	return value;
-//}
-//
-//uint8_t rotateRight(uint8_t value, uint8_t rotation)
-//{
-//	uint8_t DROPPED_LSB;
-//
-//	while (rotation--)
-//	{
-//		DROPPED_LSB = value & 1;
-//		value = (value>>1) & (~(1 << 7));
-//		value = value | (DROPPED_LSB<<7);
-//	}
-//
-//	return value;
-//}
 
 /* USER CODE END 4 */
 
