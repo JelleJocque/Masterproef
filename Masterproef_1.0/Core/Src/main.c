@@ -68,39 +68,35 @@ uint8_t settingsDataLength = 40;				// Databytes in audio packet
 uint8_t settingsResolution = 8;					// 8 or 12 (ADC resolution)
 uint8_t settingsEncryption = 1;					// 0 = off, 1 = on
 uint32_t settingsFrequency = 245000;			// Frequency in kHz
-char* settingsWindow = "Home";					// Current window
 
 /* General variables */
-uint8_t returnValue;
 uint16_t adcVal;
 uint16_t adcValDownSampled;
-uint32_t counter = 0;
+
+/* Debug variables */
+uint8_t returnValue;
+uint32_t counter;
+uint32_t Packets_Received;
+uint32_t Packets_Send;
 
 /* External interrupts */
 uint8_t INT_PACKET_RECEIVED = 0;
 uint8_t INT_PACKET_SEND = 0;
 
-// Tx variables
+/* Tx variables */
 cbuf_handle_t Tx_buffer_handle_t;
 uint8_t TX_BUFFER_BASE;
-uint32_t Tx_teller = 0;
-uint32_t Tx_Pkt_counter = 0;
-uint8_t Tx_byte1;
-uint8_t Tx_byte2;
-uint8_t Tx_byte3;
-uint8_t Tx_byteCounter;
-uint16_t Tx_sample1;
-uint16_t Tx_sample2;
-uint32_t Tx_test_teller;
 
-// Rx variables
+/* Rx variables */
 cbuf_handle_t Rx_buffer_handle_t;
 uint8_t RX_BUFFER_BASE;
+uint8_t Rx_Pkt_length;
+uint8_t Rx_Pkt_type;
+uint8_t Rx_Data_length;
+uint8_t Rx_RSSI;
+uint8_t Rx_Encryption_byte;
 
 /* Encryption variables */
-cbuf_handle_t RSSI_buffer_handle_t;
-cbuf_handle_t Key_RSSI_Threshold_buffer_handle_t;
-
 uint32_t RSSI_counter;
 uint16_t Key_RSSI_Mean;
 uint8_t Key_Start = 0xAA;
@@ -109,20 +105,10 @@ uint8_t Key_New;
 uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
 uint8_t Encryption_byte;
-
 uint8_t Key_chosen_wait_timer = 0;
-
-uint32_t Packets_Received;
-uint32_t Packets_Send;
-
 double ALPHA = 0.1;
 
-uint8_t Rx_Pkt_length;
-uint8_t Rx_Pkt_type;
-uint8_t Rx_Data_length;
-uint8_t Rx_RSSI;
-uint8_t Rx_Encryption_byte;
-
+/* Button states */
 static volatile POWER_state = 1;
 static volatile TALK_state = 1;
 static volatile UP_state = 1;
@@ -152,24 +138,17 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *);
 
 /* Basic functions */
 void Startup(void);
-void Potmeter_Init(uint8_t);
 void Setup();
+void Potmeter_Init(uint8_t);
 
-void Audio_Buffer_Write(uint16_t *buffer);
-void Audio_Buffer_Read(uint16_t *buffer);
-
+/* Audio functions */
 void Play_Audio(void);
-
-void SendPacket(void);
 void SendPacket8bit(void);
 void ReadPacket(void);
 
 /* Encryption functions */
 void WriteKeyPacket(void);
-void ReadKeyPacket(void);
-void WriteACKPacket(void);
 uint8_t ReadRSSI(void);
-
 void Hamming_send(uint8_t);
 void Hamming_check(uint8_t);
 
@@ -1150,24 +1129,24 @@ void Setup()
 			OLED_update();
 
 			/* Reverse HAL audio settings for Rx mode */
-			HAL_DAC_Stop(&hdac, DAC_CHANNEL_1);													// Stop the DAC interface
-			HAL_TIM_Base_Stop_IT(&htim1);														// Stop timer 1 (frequency = 8 kHz)
+			HAL_DAC_Stop(&hdac, DAC_CHANNEL_1);										// Stop the DAC interface
+			HAL_TIM_Base_Stop_IT(&htim1);											// Stop timer 1 (frequency = 8 kHz)
 
 			/* ADF settings */
 			ADF_set_turnaround_Tx_Rx();
 
 			/* Power settings */
-			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);								// Shutdown LM386 to prevent power consumption
-			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_SET);							// Enable the analog microphone
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);					// Shutdown LM386 to prevent power consumption
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_SET);				// Enable the analog microphone
 
 			/* Buffer Settings for Tx mode */
 			uint16_t Tx_buffer_size = 400;
-			uint16_t *Tx_buffer = malloc(Tx_buffer_size * sizeof(uint16_t));					// Tx_buffer with size of 400 bytes
-			Tx_buffer_handle_t = circular_buf_init(Tx_buffer, Tx_buffer_size);					// Tx buffer handle type
+			uint16_t *Tx_buffer = malloc(Tx_buffer_size * sizeof(uint16_t));		// Tx_buffer with size of 400 bytes
+			Tx_buffer_handle_t = circular_buf_init(Tx_buffer, Tx_buffer_size);		// Tx buffer handle type
 
 			/* HAL audio settings for Tx mode */
-			HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_1);											// Start timer 5 (frequency = 16 kHz)
-			HAL_ADC_Start_IT(&hadc1);															// Start ADC interrupt triggered by timer 5
+			HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_1);								// Start timer 5 (frequency = 16 kHz)
+			HAL_ADC_Start_IT(&hadc1);												// Start ADC interrupt triggered by timer 5
 
 			break;
 
@@ -1177,27 +1156,27 @@ void Setup()
 			OLED_update();
 
 			/* Reverse HAL audio settings for Tx mode */
-			HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_1);												// Stop timer 5 (frequency = 16 kHz)
-			HAL_ADC_Stop_IT(&hadc1);															// Stop ADC interrupt triggered by timer 5
+			HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_1);									// Stop timer 5 (frequency = 16 kHz)
+			HAL_ADC_Stop_IT(&hadc1);												// Stop ADC interrupt triggered by timer 5
 
 			/* ADF settings */
 			ADF_set_turnaround_Rx_Tx();
 
 			/* Power settings */
-			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);							// Shutdown the analog microphone to prevent power consumption
-			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_SET);								// Enable the LM386
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);				// Shutdown the analog microphone to prevent power consumption
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_SET);					// Enable the LM386
 
 			/* Buffer Settings for Rx mode */
 			uint16_t Rx_buffer_size = 400;
-			uint16_t *Rx_buffer = malloc(Rx_buffer_size * sizeof(uint16_t));					// Rx_buffer with size of 400 bytes = 5 packets
-			Rx_buffer_handle_t = circular_buf_init(Rx_buffer, Rx_buffer_size);					// Rx buffer handle type
+			uint16_t *Rx_buffer = malloc(Rx_buffer_size * sizeof(uint16_t));		// Rx_buffer with size of 400 bytes = 5 packets
+			Rx_buffer_handle_t = circular_buf_init(Rx_buffer, Rx_buffer_size);		// Rx buffer handle type
 
 			/* HAL audio settings for Rx mode */
-			HAL_DAC_Start(&hdac, DAC_CHANNEL_1);												// Start the DAC interface
-			HAL_TIM_Base_Start_IT(&htim1);														// Start timer 1 (frequency = 8 kHz)
+			HAL_DAC_Start(&hdac, DAC_CHANNEL_1);									// Start the DAC interface
+			HAL_TIM_Base_Start_IT(&htim1);											// Start timer 1 (frequency = 8 kHz)
 
 			/* Rx mode */
-			ADF_set_Rx_mode();																	// Rx mode
+			ADF_set_Rx_mode();														// Rx mode
 
 			break;
 	}
@@ -1228,68 +1207,6 @@ void Play_Audio(void)
 		{
 			returnValue = circular_buf_get(Rx_buffer_handle_t, &sample);
 			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sample);
-		}
-	}
-}
-
-void SendPacket(void)
-{
-	Tx_test_teller++;
-	if (Tx_teller == settingsDataLength + 3)
-	{
-		ADF_set_Tx_mode();
-		Tx_Pkt_counter++;
-		Tx_teller = 0;
-	}
-
-	if (Tx_teller == 0)
-	{
-		//Write Header byte with the total length of the packet (3 + lengte + 2)
-		uint8_t packet_total_length = settingsDataLength + 5;
-		ADF_SPI_MEM_WR(TX_BUFFER_BASE, packet_total_length);
-		Tx_teller++;
-		ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, 0x08);
-		Tx_teller++;
-		ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, settingsDataLength);
-		Tx_teller++;
-
-		Tx_byteCounter = 0;
-	}
-
-	uint16_t size = circular_buf_size(Tx_buffer_handle_t);
-	if (size != 0)
-	{
-		if (settingsResolution == 8)
-		{
-			returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
-			ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_sample1);
-			Tx_teller++;
-		}
-		else if (settingsResolution == 12)
-		{
-			if (Tx_byteCounter == 0)
-			{
-				returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample1);
-				Tx_byte1 = Tx_sample1&0x0ff;
-				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte1);
-				Tx_teller++;
-
-				returnValue = circular_buf_get(Tx_buffer_handle_t, &Tx_sample2);
-				Tx_byte2 = (Tx_sample1>>4)&0x0f0;
-				Tx_byte2 = Tx_byte2|(Tx_sample2&0x00f);
-				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte2);
-				Tx_teller++;
-
-				Tx_byteCounter++;
-			}
-			else if (Tx_byteCounter == 2)
-			{
-				Tx_byte3 = (Tx_sample2>>4)&0xff;
-				ADF_SPI_MEM_WR(TX_BUFFER_BASE + Tx_teller, Tx_byte3);
-				Tx_teller++;
-				Tx_byteCounter = -1;
-			}
-			Tx_byteCounter++;
 		}
 	}
 }
@@ -1439,18 +1356,6 @@ void WriteKeyPacket(void)
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
 	uint8_t bytes[] = {0x10, 0x05, 0x10, 0xff};									// TYPE = 0x10 => Key packet
 	HAL_SPI_Transmit_IT(&hspi2, bytes, 4);
-	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
-
-	while (ADF_SPI_READY() == 0);
-}
-
-void WriteACKPacket(void)
-{
-	while (ADF_SPI_READY() == 0);
-
-	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	uint8_t bytes[] = {0x10, 0x05, 0x11,};									// TYPE = 0x11 => ACK packet
-	HAL_SPI_Transmit(&hspi2, bytes, 4, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);

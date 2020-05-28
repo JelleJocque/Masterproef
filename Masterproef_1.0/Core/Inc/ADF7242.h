@@ -36,32 +36,31 @@ IRQ2      |PA9        |Interrupt request 2
 
 /* Functions -----------------------------------------------------------------*/
 void ADF_Init(uint32_t);
-void ADF_SPI_MEM_WR(uint16_t, uint8_t);
-uint8_t ADF_SPI_MEM_RD(uint16_t);
-void ADF_SPI_RD_Rx_Buffer(void);
-uint8_t ADF_SPI_SEND_BYTE(uint8_t);
+void ADF_reset(void);
+void ADF_sleep(void);
+
 void ADF_SET_FREQ_kHz(uint32_t);
 uint32_t ADF_RD_Frequency_MHz(void);
-uint8_t ADF_SPI_STATUS(void);
 
-uint8_t ADF_SPI_READY(void);
-uint8_t ADF_Rx_READY(void);
-uint8_t ADF_PHY_RDY_READY(void);
-uint8_t ADF_IDLE_READY(void);
+void ADF_SPI_MEM_WR(uint16_t, uint8_t);
+uint8_t ADF_SPI_MEM_RD(uint16_t);
+
+void ADF_set_turnaround_Tx_Rx(void);
+void ADF_set_turnaround_Rx_Tx(void);
 
 void ADF_set_IDLE_mode(void);
 void ADF_set_PHY_RDY_mode(void);
 void ADF_set_Tx_mode(void);
 void ADF_set_Rx_mode(void);
 
-uint8_t ADF_check_INT_flag(void);
+uint8_t ADF_SPI_READY(void);
+
+uint8_t ADF_Rx_READY(void);
+uint8_t ADF_PHY_RDY_READY(void);
+uint8_t ADF_IDLE_READY(void);
+
 void ADF_clear_Rx_flag(void);
 void ADF_clear_Tx_flag(void);
-
-void ADF_set_turnaround_Tx_Rx(void);
-void ADF_set_turnaround_Rx_Tx(void);
-
-void ADF_sleep(void);
 
 #ifdef __cplusplus
 }
