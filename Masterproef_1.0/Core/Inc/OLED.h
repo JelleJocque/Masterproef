@@ -33,17 +33,18 @@ SCL       |PB6        |I2C Serial Clock
 
 /* Functions -----------------------------------------------------------------*/
 void OLED_init(void);
-void OLED_print_text(char[], uint8_t, uint8_t);
-void OLED_print_title(char[], uint8_t, uint8_t);
-void OLED_print_date_and_time(void);
-void OLED_print_variable(char[], uint32_t, uint8_t, uint8_t);
-void OLED_print_binary(char[], uint32_t, uint8_t, uint8_t);
-void OLED_print_talk(void);
-void OLED_print_stoptalk(void);
-void OLED_print_volume(uint8_t);
 void OLED_clear_screen(void);
 void OLED_update(void);
 void OLED_shutdown(void);
+
+void OLED_print_text(char[], uint8_t, uint8_t);
+void OLED_print_variable(char[], uint32_t, uint8_t, uint8_t);
+void OLED_print_hexadecimal(char[], uint32_t, uint8_t, uint8_t);
+
+void OLED_print_date_and_time(void);
+void OLED_print_talk(void);
+void OLED_print_stoptalk(void);
+void OLED_print_volume(uint8_t);
 
 #ifdef __cplusplus
 }

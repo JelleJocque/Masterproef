@@ -110,6 +110,8 @@ uint8_t Key_bits;
 uint8_t Key_RSSI_Threshold = 10;
 uint8_t Encryption_byte;
 
+uint8_t Key_chosen_wait_timer = 0;
+
 uint32_t Packets_Received;
 uint32_t Packets_Send;
 
@@ -121,6 +123,7 @@ uint8_t Rx_Data_length;
 uint8_t Rx_RSSI;
 uint8_t Rx_Encryption_byte;
 
+static volatile POWER_state = 1;
 static volatile TALK_state = 1;
 static volatile UP_state = 1;
 static volatile DOWN_state = 1;
@@ -222,16 +225,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			break;
 
 		case BUTTON_PWR_Pin:
-			while (HAL_GPIO_ReadPin(BUTTON_PWR_GPIO_Port, BUTTON_PWR_Pin));
-			HAL_Delay(250);
-
-			ADF_sleep();
-			OLED_shutdown();												// Shutdown OLED display
-			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);			// Shutdown LM386
-			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);		// Shutdown the analog microphone
-
-			HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
-			HAL_PWR_EnterSTANDBYMode();
+			if (POWER_state)
+			{
+				POWER_state = 0;
+				HAL_TIM_Base_Start_IT(&htim11);
+			}
 
 			break;
 	}
@@ -249,6 +247,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	// Timer debouncing for external interrupts
 	if (htim->Instance == TIM11)
 	{
+		if (HAL_GPIO_ReadPin(BUTTON_PWR_GPIO_Port, BUTTON_PWR_Pin))
+		{
+			POWER_state = 1;
+
+			ADF_sleep();
+
+			OLED_shutdown();												// Shutdown OLED display
+			HAL_GPIO_WritePin(GPIOB, SWITCH_E_Pin, GPIO_PIN_RESET);			// Shutdown LM386
+			HAL_GPIO_WritePin(GPIOB, A_MIC_POWER_Pin, GPIO_PIN_RESET);		// Shutdown the analog microphone
+
+			HAL_DAC_Stop(&hdac, DAC_CHANNEL_1);								// Stop the DAC interface
+			HAL_TIM_Base_Stop_IT(&htim1);									// Stop timer 1 (frequency = 8 kHz)
+
+			HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_1);							// Stop timer 5 (frequency = 16 kHz)
+			HAL_ADC_Stop_IT(&hadc1);										// Stop ADC interrupt triggered by timer 5
+
+			HAL_Delay(250);
+
+			HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+			HAL_PWR_EnterSTANDBYMode();
+
+			HAL_TIM_Base_Stop_IT(&htim11);
+		}
+
 		if (HAL_GPIO_ReadPin(BUTTON_TALK_GPIO_Port, BUTTON_TALK_Pin))
 		{
 			TALK_state = 1;
@@ -317,7 +339,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		/* Update every 3 seconds */
 		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
 		OLED_print_variable("Key bits:", Key_bits, 0, 36);
-		OLED_print_binary("Key:", Key_New, 80, 36);
+		OLED_print_hexadecimal("Key:", Key_New, 80, 36);
 
 		OLED_print_date_and_time();
 
@@ -432,34 +454,41 @@ int main(void)
 
 			  if (Key_bits != 0 && Key_bits % 8 == 0)
 			  {
-//				  OLED_UPDATE();
 				  Hamming_send(Key_New);
 				  Key_Current = Key_New;
+
 				  Key_New = 0;
 				  Key_bits = 0;
-				  RSSI_counter = 0;
+				  Key_chosen_wait_timer = 40;		// Wait 200 ms to create new key
 			  }
 			  else
 			  {
 				  if (RSSI_counter > 10)
 				  {
-					  if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
+					  if (Key_chosen_wait_timer == 0)
 					  {
-						  if (Key_bits<8)
+						  if (RSSI < (Key_RSSI_Mean - Key_RSSI_Threshold))
 						  {
-							  Key_New = (Key_New<<1) | 0;
-							  Key_bits++;
-							  Encryption_byte = 0x01;
+							  if (Key_bits<8)
+							  {
+								  Key_New = (Key_New<<1) | 0;
+								  Key_bits++;
+								  Encryption_byte = 0x01;
+							  }
+						  }
+						  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
+						  {
+							  if (Key_bits<8)
+							  {
+								  Key_New = (Key_New<<1) | 1;
+								  Key_bits++;
+								  Encryption_byte = 0x01;
+							  }
 						  }
 					  }
-					  else if (RSSI > (Key_RSSI_Mean + Key_RSSI_Threshold))
+					  else
 					  {
-						  if (Key_bits<8)
-						  {
-							  Key_New = (Key_New<<1) | 1;
-							  Key_bits++;
-							  Encryption_byte = 0x01;
-						  }
+						  Key_chosen_wait_timer--;
 					  }
 				  }
 			  }
@@ -1039,7 +1068,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : BUTTON_PWR_Pin */
   GPIO_InitStruct.Pin = BUTTON_PWR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BUTTON_PWR_GPIO_Port, &GPIO_InitStruct);
 
@@ -1086,14 +1115,7 @@ void Startup(void)
 
 	/* OLED settings */
 	OLED_clear_screen();
-//	HAL_TIM_Base_Start_IT(&htim9);
 
-	/* Setup */
-	Setup();
-}
-
-void Setup()
-{
 	/* RTC time */
 	OLED_print_date_and_time();
 
@@ -1102,6 +1124,14 @@ void Setup()
 	OLED_print_volume(settingsVolume);
 	OLED_update();
 
+	ADF_Init(settingsFrequency);
+
+	/* Setup */
+	Setup();
+}
+
+void Setup()
+{
 	if (settingsEncryption)
 	{
 		Key_Current = Key_Start;
@@ -1111,8 +1141,6 @@ void Setup()
 			WriteKeyPacket();
 		}
 	}
-
-	ADF_Init(settingsFrequency);
 
 	switch(settingsMode)
 	{
@@ -1134,7 +1162,7 @@ void Setup()
 
 			/* Buffer Settings for Tx mode */
 			uint16_t Tx_buffer_size = 400;
-			uint16_t *Tx_buffer = malloc(Tx_buffer_size * sizeof(uint16_t));					// Tx_buffer with size of 400 bytes = 5 packets
+			uint16_t *Tx_buffer = malloc(Tx_buffer_size * sizeof(uint16_t));					// Tx_buffer with size of 400 bytes
 			Tx_buffer_handle_t = circular_buf_init(Tx_buffer, Tx_buffer_size);					// Tx buffer handle type
 
 			/* HAL audio settings for Tx mode */
@@ -1300,11 +1328,19 @@ void SendPacket8bit(void)
 	}
 
 	HAL_SPI_Transmit_IT(&hspi2, &Encryption_byte, 1);
-	Encryption_byte = 0;
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	ADF_set_Tx_mode();
+
+	if (Encryption_byte >= 240)
+	{
+		Encryption_byte = 0;
+
+		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
+		OLED_update();
+	}
 }
 
 void ReadPacket(void)
@@ -1384,16 +1420,16 @@ void ReadPacket(void)
 	{
 		Hamming_check(Rx_Encryption_byte & 0x0F);
 		Rx_Encryption_byte = 0;
-	}
 
-	//debug
-//	if (Key_bits != 0 && Key_bits % 8 == 0)
-//	{
-//	  OLED_UPDATE();
-//	  Key_Current = Key_New;
-//	  Key_New = 0;
-//	  Key_bits = 0;
-//	}
+		Key_Current = Key_New;
+
+		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
+		OLED_update();
+
+		Key_New = 0;
+		Key_bits = 0;
+	}
 }
 
 void WriteKeyPacket(void)
@@ -1474,11 +1510,11 @@ void Hamming_check(uint8_t Tx_code)
 
 		if (parity_0 != (Tx_code & 0x01))
 			control_0 = 1;
-		else if (parity_1 != ((Tx_code>>1) & 0x01))
+		if (parity_1 != ((Tx_code>>1) & 0x01))
 			control_1 = 1;
-		else if (parity_2 != ((Tx_code>>2) & 0x01))
+		if (parity_2 != ((Tx_code>>2) & 0x01))
 			control_2 = 1;
-		else if (parity_3 != ((Tx_code>>3) & 0x01))
+		if (parity_3 != ((Tx_code>>3) & 0x01))
 			control_3 = 1;
 
 		uint8_t control = (control_3 * 8) + (control_2 * 4) + (control_1 * 2) + control_0;
@@ -1488,20 +1524,28 @@ void Hamming_check(uint8_t Tx_code)
 		{
 			case 3:
 				Key_New ^= 1UL << 0;
+				break;
 			case 5:
 				Key_New ^= 1UL << 1;
+				break;
 			case 6:
 				Key_New ^= 1UL << 2;
+				break;
 			case 7:
 				Key_New ^= 1UL << 3;
+				break;
 			case 9:
 				Key_New ^= 1UL << 4;
+				break;
 			case 10:
 				Key_New ^= 1UL << 5;
+				break;
 			case 11:
 				Key_New ^= 1UL << 6;
+				break;
 			case 12:
 				Key_New ^= 1UL << 7;
+				break;
 		}
 	}
 }
