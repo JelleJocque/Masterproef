@@ -1254,9 +1254,9 @@ void SendPacket8bit(void)
 	{
 		Encryption_byte = 0;
 
-		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
-		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
-		OLED_update();
+//		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+//		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
+//		OLED_update();
 	}
 }
 
@@ -1340,9 +1340,9 @@ void ReadPacket(void)
 
 		Key_Current = Key_New;
 
-		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
-		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
-		OLED_update();
+//		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+//		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
+//		OLED_update();
 
 		Key_New = 0;
 		Key_bits = 0;

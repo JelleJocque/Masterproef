@@ -48,8 +48,11 @@ void ADF_reset(void)
 {
 	uint8_t byte[] = {0xc8};
 
+	uint8_t status;
+
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit_IT(&hspi2, byte, 1);
+	HAL_SPI_Transmit(&hspi2, byte, 1, 50);
+	HAL_SPI_Receive(&hspi2, &status, 1, 50);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 }
 
