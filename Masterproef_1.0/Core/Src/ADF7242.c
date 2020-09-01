@@ -6,6 +6,10 @@
  */
 #include "ADF7242.h"
 
+extern SPI_HandleTypeDef hspi2;
+extern uint8_t RX_BUFFER_BASE;
+extern uint8_t TX_BUFFER_BASE;
+
 /* Variables -------------------------------------------------------------------*/
 
 /* Functions -------------------------------------------------------------------*/
