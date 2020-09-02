@@ -115,13 +115,13 @@ void OLED_print_stoptalk(void)
 	SSD1306_Puts("STOP", &Font_7x10, SSD1306_COLOR_BLACK);
 }
 
-void OLED_print_volume(uint8_t volume)
+void OLED_print_volume(uint8_t value)
 {
-	uint8_t value = volume / 10;
+//	uint8_t value = volume / 10;
 	char stringValue[10];
 	sprintf(stringValue, "%d", value);
 	SSD1306_GotoXY(27,0);
-	SSD1306_Puts("Volume:", &Font_7x10, SSD1306_COLOR_WHITE);
+	SSD1306_Puts("Thres:", &Font_7x10, SSD1306_COLOR_WHITE);
 	SSD1306_GotoXY(27+(7*7),0);
 	SSD1306_Puts(stringValue, &Font_7x10, SSD1306_COLOR_WHITE);
 }
