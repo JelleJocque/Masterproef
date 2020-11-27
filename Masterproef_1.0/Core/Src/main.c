@@ -40,6 +40,8 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+CRC_HandleTypeDef hcrc;
+
 DAC_HandleTypeDef hdac;
 
 I2C_HandleTypeDef hi2c1;
@@ -63,8 +65,8 @@ RTC_DateTypeDef sDate;
 
 /* Default Settings */
 char settingsMode = 'R';
-uint8_t settingsVolume = 60;					// Potentiometer for volume
-uint8_t settingsDataLength = 40;				// Databytes in audio packet
+uint8_t settingsVolume = 70;					// Potentiometer for volume
+uint8_t settingsDataLength = 20;				// Databytes in audio packet
 uint8_t settingsResolution = 8;					// 8 or 12 (ADC resolution)
 uint8_t settingsEncryption = 1;					// 0 = off, 1 = on
 uint32_t settingsFrequency = 245000;			// Frequency in kHz
@@ -108,20 +110,35 @@ uint8_t Rx_Pkt_type;
 uint8_t Rx_Data_length;
 uint8_t Rx_Encryption_byte;
 uint8_t Rx_Dummy_byte;
+uint8_t Rx_CRC_response;
 
 /* Encryption variables */
 uint32_t Tx_RSSI_counter;
 uint32_t RSSI_counter;
 uint16_t Key_RSSI_Mean;
 double Key_RSSI_Mean_Double;
+uint32_t Key_32bit_Array[4] = {0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA};
+uint32_t Key_32bit = 0xAAAAAAAA;
 uint8_t Key_Start = 0xAA;
 uint8_t Key_Current;
 uint8_t Key_New;
 uint8_t Key_bits;
-uint8_t Key_RSSI_Threshold = 7;
+uint8_t Key_bytes = 0;
+uint8_t Key_RSSI_Threshold = 3;
 uint8_t Encryption_byte;
-uint8_t Key_chosen_wait_timer = 0;
+uint8_t Key_chosen_wait_timer;
 double ALPHA = 0.1;
+uint32_t KeyCounter32bit;
+uint8_t Key_32bit_Array_Index;
+
+uint32_t Old_Key_32bit;
+uint8_t Old_Key_32bit_index;
+
+uint32_t CRC_Tx_value;
+uint8_t CRC_Tx_bytes[4];
+
+uint32_t CRC_Rx_value;
+uint8_t CRC_Rx_bytes[4];
 
 /* Button states */
 static volatile POWER_state = 1;
@@ -144,6 +161,7 @@ static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM9_Init(void);
 static void MX_RTC_Init(void);
+static void MX_CRC_Init(void);
 static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -167,6 +185,12 @@ void WriteKeyPacket(void);
 uint8_t ReadRSSI(void);
 void Hamming_send(uint8_t);
 void Hamming_check(uint8_t);
+void CRC_send(void);
+void CRC_check(void);
+
+/* EEPROM functions */
+void Clear_Flash_Sector4(void);
+void Write_Flash(uint32_t, uint32_t);
 
 /* USER CODE END PFP */
 
@@ -420,10 +444,13 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM9_Init();
   MX_RTC_Init();
+  MX_CRC_Init();
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 
   Startup();
+
+  Clear_Flash_Sector4();
 
   /* USER CODE END 2 */
 
@@ -434,7 +461,7 @@ int main(void)
 	  if (settingsMode == 'T')
 	  {
 		  // Send audio packet
-		  if (circular_buf_size(Tx_buffer_handle_t) > 40)
+		  if (circular_buf_size(Tx_buffer_handle_t) > settingsDataLength)
 		  {
 			  if (settingsResolution == 8)
 			  {
@@ -448,7 +475,29 @@ int main(void)
 
 		  if (settingsMode == 'T')
 		  {
+			  // Update mean RSSI
 			  uint8_t RSSI = ReadKeyPacket();
+
+//			  // Debug
+//			  uint32_t address0 = 0x08012000 + (16*(Tx_RSSI_counter-1));
+//			  Write_Flash(address0, (uint32_t) RSSI);
+
+
+			  if (Rx_CRC_response == 0x01)			// CRC correct
+			  {
+				  // Debug
+				  uint32_t address1 = 0x08011000 + (4*(KeyCounter32bit-1));
+				  Write_Flash(address1, Key_32bit);
+			  }
+			  else if (Rx_CRC_response == 0x10)	// CRC not correct
+			  {
+				  // Update key
+				  Key_32bit_Array[Old_Key_32bit_index] = Old_Key_32bit;
+
+				  // Try again
+				  KeyCounter32bit--;
+			  }
+
 			  if (!Tx_RSSI_counter)
 			  {
 				  Key_RSSI_Mean_Double = RSSI;
@@ -459,20 +508,44 @@ int main(void)
 				  Key_RSSI_Mean_Double = (ALPHA*RSSI) + ((1-ALPHA)*Key_RSSI_Mean_Double);
 			      Key_RSSI_Mean = round(Key_RSSI_Mean_Double);
 			  }
+
+//			  // Debug
+//			  uint32_t address2 = 0x08016000 + (16*(Tx_RSSI_counter-1));
+//			  Write_Flash(address2, (uint32_t) Key_RSSI_Mean);
+
 			  Tx_RSSI_counter++;
 
-			  if (Key_bits != 0 && Key_bits % 8 == 0)
+			  if (Key_bytes == 4)
+			  {
+				  // Index
+				  Key_32bit_Array_Index = KeyCounter32bit % 4;
+
+				  // Save old 32bit key
+				  Old_Key_32bit_index = Key_32bit_Array_Index;
+				  Old_Key_32bit = Key_32bit_Array[Old_Key_32bit_index];
+
+				  // Update key
+				  Key_32bit_Array[Key_32bit_Array_Index] = Key_32bit;
+
+				  CRC_send();
+
+				  KeyCounter32bit++;
+				  Key_bytes = 0;
+			  }
+			  else if (Key_bits == 8)	// Hamming check every 8 bits
 			  {
 				  Hamming_send(Key_New);
 				  Key_Current = Key_New;
 
+				  Key_32bit = (Key_32bit<<8) | Key_New;
+
 				  Key_New = 0;
 				  Key_bits = 0;
-				  Key_chosen_wait_timer = 20;		// Wait 100 ms to create new key
+				  Key_bytes++;
 			  }
-			  else
+			  else	// Choose key bit
 			  {
-				  if (Tx_RSSI_counter > 100)
+				  if (Tx_RSSI_counter > 100)						// Wait for 100 RSSI values
 				  {
 					  if (Key_chosen_wait_timer == 0)
 					  {
@@ -480,16 +553,11 @@ int main(void)
 						  {
 							  if (Key_bits<8)
 							  {
-								  //debug
-								  TxRSSIValues[Key_bits] = RSSI;
-								  TxRSSIMeanValues[Key_bits] = Key_RSSI_Mean;
-								  TxCounterTable[Key_bits] = Tx_RSSI_counter;
-
 								  Key_New = (Key_New<<1) | 0;
 								  Key_bits++;
 								  Encryption_byte = 1;
 
-//								  Key_chosen_wait_timer = 20;		// Wait 100 ms to create new key
+								  Key_chosen_wait_timer = 8;		// Wait to choose new key bit
 
 							  }
 						  }
@@ -497,16 +565,11 @@ int main(void)
 						  {
 							  if (Key_bits<8)
 							  {
-								  //debug
-								  TxRSSIValues[Key_bits] = RSSI;
-								  TxRSSIMeanValues[Key_bits] = Key_RSSI_Mean;
-								  TxCounterTable[Key_bits] = Tx_RSSI_counter;
-
 								  Key_New = (Key_New<<1) | 1;
 								  Key_bits++;
 								  Encryption_byte = 1;
 
-//								  Key_chosen_wait_timer = 20;		// Wait 100 ms to create new key
+								  Key_chosen_wait_timer = 8;		// Wait to choose new key bit
 							  }
 						  }
 					  }
@@ -636,6 +699,32 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief CRC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CRC_Init(void)
+{
+
+  /* USER CODE BEGIN CRC_Init 0 */
+
+  /* USER CODE END CRC_Init 0 */
+
+  /* USER CODE BEGIN CRC_Init 1 */
+
+  /* USER CODE END CRC_Init 1 */
+  hcrc.Instance = CRC;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CRC_Init 2 */
+
+  /* USER CODE END CRC_Init 2 */
 
 }
 
@@ -1260,6 +1349,11 @@ void SendPacket8bit(void)
 {
 	uint8_t PacketTotalLength = settingsDataLength + 5;
 
+	if (Encryption_byte == 0x10)
+	{
+		PacketTotalLength = PacketTotalLength + 4;		// 4 extra bytes with CRC check
+	}
+
 	uint8_t header[] = {0x10, PacketTotalLength, 0x18, settingsDataLength};
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
@@ -1291,40 +1385,47 @@ void SendPacket8bit(void)
 
 	HAL_SPI_Transmit_IT(&hspi2, &Encryption_byte, 1);
 
+	if (Encryption_byte == 0x10)
+	{
+		HAL_SPI_Transmit_IT(&hspi2, CRC_Tx_bytes, 4);
+	}
+
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	ADF_set_Tx_mode();
 
-	if (Encryption_byte >= 240)
-	{
-		TxKeys[KeyCounter] = Key_Current;
-		KeyCounter++;
-
-		if (KeyCounter == KeyCounterLength)
-		{
-			for (int i=0; i<KeyCounterLength; i++)
-			{
-				OLED_print_hexadecimal("", TxKeys[i], 0 + (20*i), 20);
-
-//				for (int i=0; i<8; i++)
-//				{
-//					OLED_print_hexadecimal("", TxRSSIValues[i], 0 + (16*i), 30);
-//					OLED_print_hexadecimal("", TxRSSIMeanValues[i], 0 + (16*i), 40);
-//				}
-			}
-			OLED_update();
-		}
-
-//		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
-//		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
-//		OLED_update();
-	}
+//	if (Encryption_byte >= 240)
+//	{
+//		TxKeys[KeyCounter] = Key_Current;
+//		KeyCounter++;
+//
+//		if (KeyCounter == KeyCounterLength)
+//		{
+//			for (int i=0; i<KeyCounterLength; i++)
+//			{
+//				OLED_print_hexadecimal("", TxKeys[i], 0 + (20*i), 20);
+//
+////				for (int i=0; i<8; i++)
+////				{
+////					OLED_print_hexadecimal("", TxRSSIValues[i], 0 + (16*i), 30);
+////					OLED_print_hexadecimal("", TxRSSIMeanValues[i], 0 + (16*i), 40);
+////				}
+//			}
+//			OLED_update();
+//		}
+//
+////		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
+////		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
+////		OLED_update();
+//	}
 
 	Encryption_byte = 0;
 }
 
 void ReadPacket(void)
 {
+	Rx_CRC_response = 0x00;
+
 	uint8_t bytes[] = {0x30, 0xff};
 	uint8_t Rx_RSSI;
 
@@ -1341,12 +1442,22 @@ void ReadPacket(void)
 
 	HAL_SPI_Receive_IT(&hspi2, &Rx_Encryption_byte, 1);
 
+	if (Rx_Encryption_byte == 0x10)
+	{
+		HAL_SPI_Receive_IT(&hspi2, &CRC_Rx_bytes, 4);
+	}
+
 	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
 	while (ADF_SPI_READY() == 0);
 
+//	// Debug
+//	uint32_t address0 = 0x08012000 + (4*(RSSI_counter-1));
+//	Write_Flash(address0, (uint32_t) Rx_RSSI);
+
+	// Update RSSI mean
 	if (!RSSI_counter)
 	{
 		Key_RSSI_Mean_Double = Rx_RSSI;
@@ -1357,6 +1468,11 @@ void ReadPacket(void)
 		Key_RSSI_Mean_Double = (ALPHA*Rx_RSSI) + ((1-ALPHA)*Key_RSSI_Mean_Double);
 		Key_RSSI_Mean = round(Key_RSSI_Mean_Double);
 	}
+
+//	// Debug
+//	uint32_t address1 = 0x08016000 + (4*(RSSI_counter-1));
+//	Write_Flash(address1, (uint32_t) Key_RSSI_Mean);
+
 	RSSI_counter++;
 
 	if ((Rx_Pkt_type == 0x18) || (Rx_Pkt_type == 0x1c))			// Audio packet
@@ -1380,7 +1496,7 @@ void ReadPacket(void)
 	}
 
 	// Key bit chosen by transmitter
-	if (Rx_Encryption_byte == 1)
+	if (Rx_Encryption_byte == 0x01)
 	{
 		if (Rx_RSSI <= Key_RSSI_Mean)
 		{
@@ -1409,6 +1525,16 @@ void ReadPacket(void)
 			}
 		}
 	}
+	// CRC
+	else if (Rx_Encryption_byte == 0x10)
+	{
+		for (int i=0; i < 4; i++)
+		{
+			CRC_Rx_value = (CRC_Rx_value << 8) | CRC_Rx_bytes[i];
+		}
+
+		CRC_check();
+	}
 	// Hamming packet send by transmitter
 	else if (Rx_Encryption_byte >= 240)
 	{
@@ -1419,24 +1545,44 @@ void ReadPacket(void)
 
 		Key_Current = Key_New;
 
+		Key_32bit = (Key_32bit<<8) | Key_New;
+		Key_bytes++;
+
+
 		RxKeysAfterHamming[KeyCounter] = Key_Current;
 		KeyCounter++;
 
-		if (KeyCounter == KeyCounterLength)
+		if (Key_bytes == 4)
 		{
-			for (int i=0; i<KeyCounterLength; i++)
-			{
-				OLED_print_hexadecimal("", RxKeys[i], 0 + (20*i), 20);
-				OLED_print_hexadecimal("", RxKeysAfterHamming[i], 0 + (20*i), 30);
+			// Index
+			Key_32bit_Array_Index = KeyCounter32bit % 4;
 
-//				for (int i=0; i<8; i++)
-//				{
-//					OLED_print_hexadecimal("", RxRSSIValues[i], 0 + (16*i), 30);
-//					OLED_print_hexadecimal("", RxRSSIMeanValues[i], 0 + (16*i), 40);
-//				}
-			}
-			OLED_update();
+			// Save old 32bit key
+			Old_Key_32bit_index = Key_32bit_Array_Index;
+			Old_Key_32bit = Key_32bit_Array[Old_Key_32bit_index];
+
+			// Update key
+			Key_32bit_Array[Key_32bit_Array_Index] = Key_32bit;
+
+			KeyCounter32bit++;
+			Key_bytes = 0;
 		}
+
+//		if (KeyCounter == KeyCounterLength)
+//		{
+//			for (int i=0; i<KeyCounterLength; i++)
+//			{
+//				OLED_print_hexadecimal("", RxKeys[i], 0 + (20*i), 20);
+//				OLED_print_hexadecimal("", RxKeysAfterHamming[i], 0 + (20*i), 30);
+//
+////				for (int i=0; i<8; i++)
+////				{
+////					OLED_print_hexadecimal("", RxRSSIValues[i], 0 + (16*i), 30);
+////					OLED_print_hexadecimal("", RxRSSIMeanValues[i], 0 + (16*i), 40);
+////				}
+//			}
+//			OLED_update();
+//		}
 
 //		OLED_print_variable("RSSI mean: ", Key_RSSI_Mean, 0, 26);
 //		OLED_print_hexadecimal("Key:", Key_Current, 0, 36);
@@ -1459,7 +1605,7 @@ uint8_t ReadKeyPacket(void)
 
 	HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_length, 1);
 	HAL_SPI_Receive_IT(&hspi2, &Rx_Pkt_type, 1);
-	HAL_SPI_Receive_IT(&hspi2, &Rx_Dummy_byte, 1);
+	HAL_SPI_Receive_IT(&hspi2, &Rx_CRC_response, 1);
 	HAL_SPI_Receive_IT(&hspi2, &Rx_Dummy_byte, 1);
 
 	HAL_SPI_Receive_IT(&hspi2, &Rx_RSSI, 1);
@@ -1476,7 +1622,7 @@ void WriteKeyPacket(void)
 	while (ADF_SPI_READY() == 0);
 
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_RESET);
-	uint8_t bytes[] = {0x10, 0x05, 0x10, 0xff};									// TYPE = 0x10 => Key packet
+	uint8_t bytes[] = {0x10, 0x05, 0x10, Rx_CRC_response};								// TYPE = 0x10 => Key packet
 	HAL_SPI_Transmit_IT(&hspi2, bytes, 4);
 	HAL_GPIO_WritePin(ADF7242_CS_GPIO_Port, ADF7242_CS_Pin, GPIO_PIN_SET);
 
@@ -1575,6 +1721,58 @@ void Hamming_check(uint8_t Tx_code)
 				break;
 		}
 	}
+}
+
+void CRC_send(void)
+{
+	CRC_Tx_value = HAL_CRC_Calculate(&hcrc, Key_32bit_Array, 4);
+
+	for (int i=0; i<4; i++)
+	{
+		CRC_Tx_bytes[3-i] = (CRC_Tx_value >> (i*8));		// LSB to MSB (0 to 3)
+	}
+
+	Encryption_byte = 0x10;
+}
+void CRC_check(void)
+{
+	uint32_t CRC_check = HAL_CRC_Calculate(&hcrc, Key_32bit_Array, 4);
+	if (CRC_Rx_value == CRC_check)
+	{
+		Rx_CRC_response = 0x01;			// CRC correct
+
+		// Debug
+		uint32_t address = 0x08011000 + (4*(KeyCounter32bit-1));
+		Write_Flash(address, Key_32bit);
+	}
+	else
+	{
+		Rx_CRC_response = 0x10;			// CRC not correct
+
+		// Update key
+		Key_32bit_Array[Old_Key_32bit_index] = Old_Key_32bit;
+
+		// Try again
+		KeyCounter32bit--;
+	}
+}
+
+/********** EEPROM functions **********/
+void Clear_Flash_Sector4(void)
+{
+     HAL_FLASH_Unlock();
+     __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR | FLASH_FLAG_PGSERR );
+     FLASH_Erase_Sector(FLASH_SECTOR_4, VOLTAGE_RANGE_3);
+     HAL_FLASH_Lock();
+}
+
+void Write_Flash(uint32_t address, uint32_t data)
+{
+     HAL_FLASH_Unlock();
+     __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR | FLASH_FLAG_PGSERR );
+//     FLASH_Erase_Sector(FLASH_SECTOR_4, VOLTAGE_RANGE_3);
+     HAL_FLASH_Program(TYPEPROGRAM_WORD, address, data);
+     HAL_FLASH_Lock();
 }
 
 /* USER CODE END 4 */
